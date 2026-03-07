@@ -57,8 +57,12 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         skip = path.startswith(("/setup", "/api/secrets", "/static"))
-        if not skip and not settings.is_setup_complete():
-            return RedirectResponse("/setup", status_code=302)
+        if not skip:
+            try:
+                if not settings.is_setup_complete():
+                    return RedirectResponse("/setup", status_code=302)
+            except Exception:
+                return RedirectResponse("/setup", status_code=302)
         return await call_next(request)
 
 

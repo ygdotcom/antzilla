@@ -126,15 +126,18 @@ SECRETS_SCHEMA = [
 
 async def _get_configured_keys() -> dict[str, dict]:
     """Load all configured secrets (masked values + status) from DB."""
-    async with SessionLocal() as db:
-        rows = (
-            await db.execute(
-                text(
-                    "SELECT key, display_name, is_configured, last_tested_at, "
-                    "last_test_status, value_encrypted FROM secrets"
+    try:
+        async with SessionLocal() as db:
+            rows = (
+                await db.execute(
+                    text(
+                        "SELECT key, display_name, is_configured, last_tested_at, "
+                        "last_test_status, value_encrypted FROM secrets"
+                    )
                 )
-            )
-        ).fetchall()
+            ).fetchall()
+    except Exception:
+        return {}
 
     result = {}
     for r in rows:
