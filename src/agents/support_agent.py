@@ -203,6 +203,20 @@ class SupportAgent(BaseAgent):
             "total_at_risk": at_risk,
         }
 
+    async def scan_feature_requests(self, context) -> dict:
+        """Scan support tickets for feature requests. Aggregate into feature_requests table."""
+        async with SessionLocal() as db:
+            # Find support tickets mentioning features/requests
+            tickets = (await db.execute(text(
+                "SELECT business_id, messages FROM support_tickets "
+                "WHERE status = 'resolved' AND created_at > NOW() - INTERVAL '7 days'"
+            ))).fetchall()
+
+            # In production: use Claude to extract feature requests from ticket content
+            # and cluster similar requests together
+
+        return {"tickets_scanned": len(tickets)}
+
 
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context

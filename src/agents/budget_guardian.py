@@ -146,6 +146,30 @@ class BudgetGuardianAgent(BaseAgent):
 
         return {"alerted": pct >= 0.80}
 
+    async def track_cash_flow(self, context) -> dict:
+        """Track total investment vs revenue per business. Calculate runway."""
+        async with SessionLocal() as db:
+            businesses = (await db.execute(text(
+                "SELECT b.id, b.name, b.slug, b.mrr, "
+                "COALESCE((SELECT SUM(cost_usd) FROM budget_tracking WHERE business_id = b.id), 0) AS total_invested, "
+                "COALESCE((SELECT SUM(cost_usd) FROM agent_logs WHERE business_id = b.id), 0) AS api_costs "
+                "FROM businesses b WHERE b.status IN ('live', 'pre_launch', 'building')"
+            ))).fetchall()
+
+        cash_flows = []
+        total_burn = 0
+        for b in businesses:
+            invested = float(b.total_invested) + float(b.api_costs)
+            mrr = float(b.mrr or 0)
+            months_to_breakeven = invested / max(mrr, 1) if mrr > 0 else None
+            total_burn += invested
+            cash_flows.append({
+                "slug": b.slug, "invested": round(invested, 2),
+                "mrr": round(mrr, 2), "months_to_breakeven": round(months_to_breakeven, 1) if months_to_breakeven else None,
+            })
+
+        return {"businesses": cash_flows, "total_burn": round(total_burn, 2)}
+
 
 def register(hatchet_instance) -> type:
     """Register BudgetGuardianAgent as a Hatchet workflow."""

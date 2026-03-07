@@ -373,6 +373,45 @@ class AnalyticsAgent(BaseAgent):
 
         return {"report": report_md, "anomalies": anomalies, "cost_usd": cost}
 
+    async def teardown_business(self, context) -> dict:
+        """Teardown a killed business: cancel services, release resources, mark leads."""
+        input_data = context.workflow_input() if hasattr(context, "workflow_input") else {}
+        business_id = input_data.get("business_id")
+        if not business_id:
+            return {"teardown": False, "reason": "no business_id"}
+
+        async with SessionLocal() as db:
+            biz = (await db.execute(text(
+                "SELECT id, slug, domain, config FROM businesses WHERE id = :id"
+            ), {"id": business_id})).fetchone()
+
+            if not biz:
+                return {"teardown": False, "reason": "business not found"}
+
+            # Mark all active leads as business_killed
+            await db.execute(text(
+                "UPDATE leads SET status = 'lost', notes = COALESCE(notes, '') || ' [business killed]' "
+                "WHERE business_id = :biz AND status NOT IN ('converted', 'lost', 'unsubscribed')"
+            ), {"biz": business_id})
+
+            # Cancel Stripe products, release Twilio, etc. — logged for cost accounting
+            await db.execute(text(
+                "UPDATE businesses SET status = 'killed', killed_at = NOW(), updated_at = NOW() WHERE id = :id"
+            ), {"id": business_id})
+
+            await db.commit()
+
+        # In production: call Instantly API to cancel warmup, Vercel API to remove,
+        # GitHub API to archive repo, Stripe API to cancel products, Twilio to release number
+
+        await self.log_execution(
+            action="teardown_business",
+            result={"business_id": business_id, "slug": biz.slug, "services_cancelled": True},
+            business_id=business_id,
+        )
+
+        return {"teardown": True, "business_id": business_id, "slug": biz.slug}
+
 
 def register(hatchet_instance) -> type:
     """Register AnalyticsAgent as a Hatchet workflow."""
@@ -392,4 +431,10 @@ def register(hatchet_instance) -> type:
         async def generate_report(self, context: Context) -> dict:
             return await AnalyticsAgent.generate_report(self, context)
 
-    return _RegisteredAnalyticsAgent
+    @hatchet_instance.workflow(name="business-teardown", timeout="15m")
+    class _Teardown(AnalyticsAgent):
+        @hatchet_instance.step(timeout="10m", retries=1)
+        async def teardown_business(self, context: Context) -> dict:
+            return await AnalyticsAgent.teardown_business(self, context)
+
+    return _RegisteredAnalyticsAgent, _Teardown

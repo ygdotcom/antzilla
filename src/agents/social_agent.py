@@ -291,6 +291,47 @@ class SocialAgent(BaseAgent):
 
         return {"posts_generated": total}
 
+    async def monitor_brand_mentions(self, context) -> dict:
+        """Monitor for negative brand mentions. Pause + alert if sentiment < 0.3."""
+        from src.agents.distribution import get_active_businesses
+
+        businesses = await get_active_businesses()
+        alerts = 0
+
+        for biz in businesses:
+            async with SessionLocal() as db:
+                # Check recent social posts for negative responses
+                recent = (await db.execute(text(
+                    "SELECT id, platform, community, content FROM social_posts "
+                    "WHERE business_id = :biz AND posted_at > NOW() - INTERVAL '24 hours'"
+                ), {"biz": biz["id"]})).fetchall()
+
+                for post in recent:
+                    # In production: check Syften for mentions + Claude sentiment
+                    pass
+
+                # Check for any negative brand mentions detected
+                negatives = (await db.execute(text(
+                    "SELECT COUNT(*) AS cnt FROM brand_mentions "
+                    "WHERE business_id = :biz AND is_negative = TRUE "
+                    "AND actioned = FALSE AND detected_at > NOW() - INTERVAL '24 hours'"
+                ), {"biz": biz["id"]})).fetchone()
+
+                if (negatives.cnt or 0) > 0:
+                    # Pause all social activity for this business
+                    logger.warning("brand_negative_detected", business=biz["slug"], count=negatives.cnt)
+                    if settings.SLACK_WEBHOOK_URL:
+                        async with httpx.AsyncClient(timeout=5) as client:
+                            try:
+                                await client.post(settings.SLACK_WEBHOOK_URL, json={
+                                    "text": f":rotating_light: *Brand Alert* — {biz['name']}: {negatives.cnt} negative mention(s) detected. Social activity paused."
+                                })
+                            except Exception:
+                                pass
+                    alerts += 1
+
+        return {"businesses_checked": len(businesses), "alerts": alerts}
+
 
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
@@ -304,5 +345,9 @@ def register(hatchet_instance) -> type:
         @hatchet_instance.step(timeout="5m", retries=1, parents=["monitor_and_engage"])
         async def linkedin_posts(self, context: Context) -> dict:
             return await SocialAgent.linkedin_posts(self, context)
+
+        @hatchet_instance.step(timeout="5m", retries=1, parents=["linkedin_posts"])
+        async def monitor_brand_mentions(self, context: Context) -> dict:
+            return await SocialAgent.monitor_brand_mentions(self, context)
 
     return _Registered

@@ -213,6 +213,19 @@ class ReplyHandler(BaseAgent):
             else:
                 # Route based on classification
                 if cat == "positive_interested":
+                    # HUMAN TOUCHPOINT: hot leads (score >= 80) or first 5 customers → Slack
+                    customer_count = 0
+                    async with SessionLocal() as _db:
+                        _row = (await _db.execute(text("SELECT COUNT(*) AS cnt FROM customers WHERE business_id = :biz"), {"biz": lead.business_id})).fetchone()
+                        customer_count = _row.cnt or 0
+
+                    if (lead.score or 0) >= 80 or customer_count < 5:
+                        await _escalate_to_slack(
+                            lead.name, reply_text,
+                            {"classification": "positive_interested", "confidence": confidence,
+                             "suggested_action": f"🔥 Hot lead (score {lead.score}). Call personally or let Voice Agent handle?"},
+                            lead.business_slug,
+                        )
                     await _route_positive_interested(lead.id, lead.business_id)
                     classifications["positive_interested"] += 1
                 elif cat == "positive_question":

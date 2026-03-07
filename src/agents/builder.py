@@ -274,6 +274,15 @@ class Builder(BaseAgent):
                 sql = inject_rls_for_missing_tables(sql, check["missing_rls"])
             fixed_migrations.append({**mig, "content": sql})
 
+        # SECURITY SCAN: check generated code for exposed secrets
+        from src.quality import security_scan_code
+        code_output = context.step_output("generate_code").get("code_output", {})
+        files_to_scan = code_output.get("files", [])
+        security = security_scan_code(files_to_scan)
+        if not security["passed"]:
+            all_violations.extend([f"SECURITY: {i['issue']} in {i['file']}" for i in security["issues"] if i["severity"] == "critical"])
+            logger.error("security_scan_failed", critical=security["critical_count"])
+
         # Also check the template base migration
         template_migration_path = "supabase/migrations/001_init.sql"
         # The template migration is pre-verified, but we log a reminder

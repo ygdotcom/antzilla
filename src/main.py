@@ -69,7 +69,8 @@ def main():
     workflows.extend([light_brand, full_brand])
     workflows.append(register_domain(hatchet))
     workflows.append(register_builder(hatchet))
-    workflows.append(register_analytics(hatchet))
+    analytics_main, analytics_teardown = register_analytics(hatchet)
+    workflows.extend([analytics_main, analytics_teardown])
 
     # Distribution engine
     workflows.append(register_leads(hatchet))

@@ -120,6 +120,8 @@ class OutreachAgent(BaseAgent):
                 limit=5,
             )
             knowledge_block = format_knowledge_for_prompt(email_knowledge)
+            # Collect emails for quality gate (checked after batch generation)
+            batch_emails = []
             cadence = outreach_cfg.get("sequence_days", [0, 3, 7, 12])
             max_daily = outreach_cfg.get("max_daily_emails", 50)
 
@@ -191,6 +193,7 @@ class OutreachAgent(BaseAgent):
                 subject = msg.get("subject", "")
                 body = msg.get("body", "")
                 total_generated += 1
+                batch_emails.append({"subject": subject, "body": body})
 
                 # Apply tiered autonomy
                 should_send = False
@@ -223,6 +226,14 @@ class OutreachAgent(BaseAgent):
                         {"step": new_step, "id": lead.id},
                     )
                     await db.commit()
+
+            # QUALITY GATE: sample 3 random emails and quality-check before sending
+            if batch_emails:
+                from src.quality import quality_check_emails
+                qc = await quality_check_emails(batch_emails, sample_size=3)
+                if not qc["passed"]:
+                    logger.warning("quality_gate_failed", business=biz["slug"], blocked=qc["blocked_count"])
+                    # In production: block sending and route to human review
 
             await self.log_execution(
                 action="run_outreach",

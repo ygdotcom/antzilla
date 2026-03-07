@@ -413,6 +413,37 @@ CREATE TABLE secrets (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ═══ BRAND MENTIONS (reputation monitoring) ═══
+
+CREATE TABLE brand_mentions (
+    id SERIAL PRIMARY KEY,
+    business_id INT REFERENCES businesses(id),
+    platform TEXT NOT NULL,
+    community TEXT,
+    content TEXT NOT NULL,
+    sentiment FLOAT,
+    is_negative BOOLEAN DEFAULT FALSE,
+    url TEXT,
+    actioned BOOLEAN DEFAULT FALSE,
+    detected_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══ FEATURE REQUESTS (product iteration loop) ═══
+
+CREATE TABLE feature_requests (
+    id SERIAL PRIMARY KEY,
+    business_id INT REFERENCES businesses(id),
+    title TEXT NOT NULL,
+    description TEXT,
+    requested_by_count INT DEFAULT 1,
+    customer_ids INT[],
+    priority_score FLOAT DEFAULT 0,
+    status TEXT DEFAULT 'proposed' CHECK (status IN ('proposed','approved','building','shipped','rejected')),
+    github_pr_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ═══ FACTORY KNOWLEDGE (cross-business learning — the factory's long-term memory) ═══
 
 CREATE TABLE factory_knowledge (
@@ -461,5 +492,7 @@ CREATE INDEX idx_signals_business ON signals(business_id, signal_type);
 CREATE INDEX idx_signals_lead ON signals(lead_id);
 CREATE INDEX idx_gtm_playbooks_business ON gtm_playbooks(business_id);
 CREATE INDEX idx_outreach_experiments_business ON outreach_experiments(business_id);
+CREATE INDEX idx_brand_mentions_business ON brand_mentions(business_id, platform, detected_at DESC);
+CREATE INDEX idx_feature_requests_business ON feature_requests(business_id, status, priority_score DESC);
 CREATE INDEX idx_factory_knowledge_category ON factory_knowledge(category, vertical);
 CREATE INDEX idx_factory_knowledge_confidence ON factory_knowledge(confidence DESC);
