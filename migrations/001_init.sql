@@ -399,6 +399,20 @@ CREATE TABLE glossary (
     UNIQUE(business_id, term_en)
 );
 
+-- ═══ SECRETS (encrypted API keys, managed via CEO Dashboard) ═══
+
+CREATE TABLE secrets (
+    id SERIAL PRIMARY KEY,
+    key TEXT UNIQUE NOT NULL,
+    value_encrypted TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('core','lead_gen','infrastructure','outreach','optional')),
+    display_name TEXT,
+    is_configured BOOLEAN DEFAULT FALSE,
+    last_tested_at TIMESTAMPTZ,
+    last_test_status TEXT DEFAULT 'untested' CHECK (last_test_status IN ('ok','failed','untested')),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ═══ INDEXES ═══
 CREATE INDEX idx_ideas_status ON ideas(status);
 CREATE INDEX idx_businesses_status ON businesses(status);

@@ -20,7 +20,14 @@ COST_PER_1K = {
     "claude-haiku-4-20250414": (0.00025, 0.00125),
 }
 
-_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+_client: anthropic.AsyncAnthropic | None = None
+
+
+def _get_client() -> anthropic.AsyncAnthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.AsyncAnthropic(api_key=settings.get("ANTHROPIC_API_KEY"))
+    return _client
 
 
 async def call_claude(
@@ -38,7 +45,7 @@ async def call_claude(
     model_id = MODELS.get(model_tier, MODELS["sonnet"])
 
     t0 = time.monotonic()
-    response = await _client.messages.create(
+    response = await _get_client().messages.create(
         model=model_id,
         max_tokens=max_tokens,
         temperature=temperature,

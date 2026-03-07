@@ -98,6 +98,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/factory
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       HATCHET_CLIENT_TLS_STRATEGY: none
     volumes:
       - hatchet_config:/hatchet/config
@@ -117,6 +118,7 @@ services:
       - "9000:9000"
     environment:
       DATABASE_URL: postgresql+asyncpg://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/factory
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       DASHBOARD_USER: ${DASHBOARD_USER:-admin}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-factory}
     volumes:

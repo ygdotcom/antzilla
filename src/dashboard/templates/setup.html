@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Setup — Step {{ step }}{% endblock %}
+
+{% block body_layout %}
+<main class="min-h-screen p-8 flex items-center justify-center">
+  {% block content %}
+  <div class="w-full max-w-xl">
+    <!-- Centered card -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-8 shadow-xl">
+      <!-- Step indicator: circles connected by lines -->
+      <div class="flex items-center justify-between mb-8">
+        {% for s in range(1, total_steps + 1) %}
+        <div class="flex items-center {% if not loop.last %}flex-1{% endif %}">
+          <div class="flex flex-col items-center">
+            {% if s < step %}
+            <div class="w-10 h-10 rounded-full bg-brand flex items-center justify-center" title="Step {{ s }} complete">
+              <svg class="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            </div>
+            {% elif s == step %}
+            <div class="w-10 h-10 rounded-full border-2 border-brand bg-transparent flex items-center justify-center ring-2 ring-brand ring-offset-2 ring-offset-black" title="Step {{ s }} current">
+              <span class="text-brand font-semibold text-sm">{{ s }}</span>
+            </div>
+            {% else %}
+            <div class="w-10 h-10 rounded-full border-2 border-zinc-600 bg-transparent flex items-center justify-center" title="Step {{ s }}">
+              <span class="text-zinc-500 font-medium text-sm">{{ s }}</span>
+            </div>
+            {% endif %}
+          </div>
+          {% if not loop.last %}
+          <div class="flex-1 h-0.5 mx-1 {% if s < step %}bg-brand{% else %}bg-zinc-700{% endif %}"></div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Step title and description -->
+      <h2 class="text-xl font-semibold text-white mb-1">{{ current_step.title }}</h2>
+      <p class="text-zinc-400 text-sm mb-6">{{ current_step.description }}</p>
+
+      <!-- Form for each key -->
+      <form id="setup-form" class="space-y-5">
+        {% for key in current_step.fields %}
+        <div class="space-y-2">
+          <label for="input-{{ key.key }}" class="block text-sm font-medium text-zinc-300">{{ key.name }}</label>
+          <div class="flex gap-2 items-center">
+            <div class="relative flex-1">
+              <input
+                type="password"
+                id="input-{{ key.key }}"
+                name="{{ key.key }}"
+                data-display-name="{{ key.name }}"
+                placeholder="{{ key.placeholder }}"
+                class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent pr-20"
+                autocomplete="off"
+              >
+              <button
+                type="button"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-300 text-xs"
+                onclick="togglePassword('input-{{ key.key }}', this)"
+                aria-label="Show password"
+              >
+                Show
+              </button>
+            </div>
+            <button
+              type="button"
+              class="px-3 py-2.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-medium text-white transition-colors shrink-0"
+              onclick="testSecret('{{ key.key }}', document.getElementById('input-{{ key.key }}'), document.getElementById('status-{{ key.key }}'))"
+            >
+              Test
+            </button>
+            <span id="status-{{ key.key }}" class="min-w-[80px]"></span>
+          </div>
+        </div>
+        {% endfor %}
+      </form>
+
+      <!-- Bottom buttons -->
+      <div class="mt-8 flex items-center justify-between">
+        {% if step < total_steps %}
+        <a
+          href="/setup?step={{ step + 1 }}"
+          class="text-zinc-400 hover:text-zinc-300 text-sm"
+        >
+          Skip this step
+        </a>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <button
+          type="button"
+          id="save-continue-btn"
+          class="px-5 py-2.5 bg-brand hover:bg-[#00b86b] text-black font-semibold rounded-lg transition-colors"
+        >
+          {% if step == total_steps %}Finish setup{% else %}Save & continue{% endif %}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function togglePassword(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+      input.setAttribute('type', type);
+      btn.textContent = type === 'password' ? 'Show' : 'Hide';
+    }
+
+    async function testSecret(key, inputEl, statusEl) {
+      const value = inputEl?.value ?? '';
+      statusEl.innerHTML = '<span class="text-zinc-500 text-sm">Testing...</span>';
+      try {
+        const res = await fetch('/api/secrets/test', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ key, value })
+        });
+        statusEl.innerHTML = await res.text();
+      } catch (e) {
+        statusEl.innerHTML = '<span class="text-red-400 text-sm">Error</span>';
+      }
+    }
+
+    document.getElementById('save-continue-btn').addEventListener('click', async function() {
+      const form = document.getElementById('setup-form');
+      const inputs = form.querySelectorAll('input[type="password"], input[type="text"]');
+      const step = {{ step }};
+      const totalSteps = {{ total_steps }};
+      const category = '{{ current_step.category }}';
+
+      for (const input of inputs) {
+        if (input.value.trim()) {
+          try {
+            await fetch('/api/secrets/save', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                key: input.name,
+                value: input.value,
+                category: category,
+                display_name: input.dataset.displayName || input.name
+              })
+            });
+          } catch (e) { console.error(e); }
+        }
+      }
+
+      if (step >= totalSteps) {
+        window.location.href = '/';
+      } else {
+        window.location.href = '/setup?step=' + (step + 1);
+      }
+    });
+  </script>
+  {% endblock %}
+</main>
+{% endblock %}

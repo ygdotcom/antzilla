@@ -25,6 +25,7 @@
   </script>
 </head>
 <body class="bg-black text-white font-sans antialiased">
+  {% block body_layout %}
   <!-- Sidebar -->
   <aside class="fixed left-0 top-0 h-screen w-56 bg-zinc-950 border-r border-zinc-800 flex flex-col">
     <div class="p-6 border-b border-zinc-800">
@@ -62,6 +63,9 @@
       <a href="/ideas" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/ideas' %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
         <span class="text-zinc-500">▸</span> Ideas
       </a>
+      <a href="/settings" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/settings' %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
+        <span class="text-zinc-500">▸</span> Settings
+      </a>
     </nav>
     <div class="p-4 border-t border-zinc-800">
       <p class="text-zinc-600 text-xs">Factory v0.1</p>
@@ -72,5 +76,6 @@
   <main class="ml-56 min-h-screen p-8">
     {% block content %}{% endblock %}
   </main>
+  {% endblock %}
 </body>
 </html>

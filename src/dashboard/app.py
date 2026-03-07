@@ -2,6 +2,7 @@
 
 The only human interface to the factory. Everything else is autonomous.
 Vercel-inspired dark design. Protected by basic auth.
+First boot: redirects to /setup wizard if no secrets configured.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from src.config import settings
@@ -32,27 +34,38 @@ if STATIC_DIR.exists():
 
 security = HTTPBasic()
 
-DASHBOARD_USER = getattr(settings, "DASHBOARD_USER", None) or "admin"
-DASHBOARD_PASSWORD = getattr(settings, "DASHBOARD_PASSWORD", None) or "factory"
-
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_user = secrets.compare_digest(credentials.username.encode(), DASHBOARD_USER.encode())
-    correct_pass = secrets.compare_digest(credentials.password.encode(), DASHBOARD_PASSWORD.encode())
+    correct_user = secrets.compare_digest(
+        credentials.username.encode(), settings.DASHBOARD_USER.encode()
+    )
+    correct_pass = secrets.compare_digest(
+        credentials.password.encode(), settings.DASHBOARD_PASSWORD.encode()
+    )
     if not (correct_user and correct_pass):
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid credentials", headers={"WWW-Authenticate": "Basic"})
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
     return credentials.username
 
 
+class SetupRedirectMiddleware(BaseHTTPMiddleware):
+    """If secrets table is empty, redirect all pages to /setup."""
+
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        skip = path.startswith(("/setup", "/api/secrets", "/static"))
+        if not skip and not settings.is_setup_complete():
+            return RedirectResponse("/setup", status_code=302)
+        return await call_next(request)
+
+
+app.add_middleware(SetupRedirectMiddleware)
+
 # Import and include route modules
-from src.dashboard.routes import overview, businesses, agents, budget, decisions, ideas, leads
-
-
-@app.get("/businesses")
-async def businesses_list(user: str = Depends(verify_credentials)):
-    """Redirect to overview (businesses table lives there)."""
-    return RedirectResponse("/", status_code=302)
-
+from src.dashboard.routes import overview, businesses, agents, budget, decisions, ideas, leads, secrets_api
 
 app.include_router(overview.router)
 app.include_router(businesses.router)
@@ -61,10 +74,17 @@ app.include_router(budget.router)
 app.include_router(decisions.router)
 app.include_router(ideas.router)
 app.include_router(leads.router)
+app.include_router(secrets_api.router)
+
+
+@app.get("/businesses")
+async def businesses_list(user: str = Depends(verify_credentials)):
+    return RedirectResponse("/", status_code=302)
 
 
 def start():
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=9000)
 
 
