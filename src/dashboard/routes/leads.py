@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
-from src.dashboard.app import verify_credentials
+from src.dashboard.deps import verify_credentials
 from src.db import SessionLocal
 
 router = APIRouter(prefix="/leads")

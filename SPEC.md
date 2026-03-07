@@ -209,7 +209,10 @@ Idea Factory finds idea (score ≥ 7)
     → IMMEDIATELY triggers Deep Scout (parallel: 3 ideas = 3 scouts running simultaneously)
         → Scout says GO → IMMEDIATELY triggers Validator (Brand light + landing page + ads)
             → 7 days of ads (the ONLY forced wait in the pipeline)
-            → Signup > 5% → IMMEDIATELY triggers Brand full → Domain Provisioner → Builder
+            → Signup > 5% (STRONG GO) → auto-cascades to Brand full → Domain → Builder
+            → Signup 3-5% (GO) → auto-cascades same way
+            → Signup 1-3% → notifies Dashboard for human GO/KILL decision
+            → Signup < 1% → auto-killed
                 → Builder deploys → IMMEDIATELY triggers Distribution Engine
                     → Lead Pipeline finds leads → Enrichment → Outreach starts
 ```
@@ -1427,13 +1430,16 @@ Aussi, produis un JSON résumé pour le GTM Playbook (ce JSON sera converti en c
 4. `launch_ads` — Create Google Ads campaign (2-3 keywords, $75 budget) + Meta Ads campaign (ICP targeting, $75 budget) via APIs.
 5. `monitor_daily` — Sub-cron: check ad metrics daily for 7 days. Log to DB.
 6. `evaluate_results` — After 7 days: compile metrics (CPC, CTR, signup rate, cost per lead, FR vs EN split). Use Claude to analyze. Produce GO/KILL recommendation.
-7. `cascade_on_result` — Save results. **If STRONG GO (signup > 5%) → IMMEDIATELY trigger the build pipeline** in sequence: Brand full mode → Domain Provisioner → Builder. These 3 cascade automatically. **If regular GO (signup 2-5%) → notify Dashboard for human GO/KILL decision.** If KILL → mark idea as killed, tear down landing page, notify Slack.
+7. `cascade_on_result` — Save results. **If GO or STRONG GO (signup ≥ 3%) → IMMEDIATELY trigger the build pipeline** in sequence: Brand full mode → Domain Provisioner → Builder. These 3 cascade automatically. **If weak signal (signup 1-3%) → notify Dashboard for human GO/KILL decision.** If KILL (signup < 1%) → mark idea as killed, tear down landing page, notify Slack.
 
 **Kill rules (hardcoded, not LLM-decided):**
 - CPC > $8 after 3 days → pause ads, recommend messaging pivot
-- Signup rate < 2% after 7 days → auto-kill (no human needed)
-- Signup rate 2-5% → GO but human confirms
+- Signup rate < 1% after 7 days → auto-kill (no interest at all)
+- Signup rate 1-3% → decent for cold traffic to unknown brand, notify Dashboard for human GO/KILL
+- Signup rate 3-5% → GO (above SaaS median of 3.8% from cold paid traffic)
 - Signup rate > 5% → STRONG GO, auto-cascade to build pipeline immediately
+
+**Why these numbers:** The median SaaS landing page converts at 3.8% — but that's for ESTABLISHED brands with recognition. A brand-new, unknown, AI-generated landing page receiving cold paid traffic from Google/Meta ads should expect lower. Getting 1-3% from cold traffic to an unknown brand is actually a positive signal. Getting > 3% means real demand. Getting > 5% is exceptional and means you should build immediately.
 
 ---
 

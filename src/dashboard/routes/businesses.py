@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import text
 
-from src.dashboard.app import templates, verify_credentials
+from src.dashboard.deps import templates, verify_credentials
 from src.db import SessionLocal
 
 router = APIRouter(prefix="/business")

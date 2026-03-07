@@ -7,48 +7,24 @@ First boot: redirects to /setup wizard if no secrets configured.
 
 from __future__ import annotations
 
-import secrets
 from pathlib import Path
 
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import Depends, FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.status import HTTP_401_UNAUTHORIZED
 
 from src.config import settings
+from src.dashboard.deps import verify_credentials
 
 logger = structlog.get_logger()
 
 app = FastAPI(title="Factory Dashboard", docs_url=None, redoc_url=None)
 
-TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
-
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-security = HTTPBasic()
-
-
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_user = secrets.compare_digest(
-        credentials.username.encode(), settings.DASHBOARD_USER.encode()
-    )
-    correct_pass = secrets.compare_digest(
-        credentials.password.encode(), settings.DASHBOARD_PASSWORD.encode()
-    )
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 
 class SetupRedirectMiddleware(BaseHTTPMiddleware):
