@@ -1,0 +1,78 @@
+{
+  "common": {
+    "appName": "{{APP_NAME}}",
+    "tagline": "Conçu au Québec",
+    "loading": "Chargement...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "back": "Retour"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "pricing": "Tarification",
+    "blog": "Blogue",
+    "login": "Connexion",
+    "signup": "Inscription",
+    "logout": "Déconnexion"
+  },
+  "auth": {
+    "loginTitle": "Bon retour",
+    "signupTitle": "Commence gratuitement",
+    "nameLabel": "Nom complet",
+    "emailLabel": "Courriel",
+    "phoneLabel": "Téléphone",
+    "signupCta": "Commence ton essai gratuit de 14 jours",
+    "loginCta": "Connexion",
+    "googleCta": "Continuer avec Google",
+    "noAccount": "Tu n'as pas de compte?",
+    "hasAccount": "Tu as déjà un compte?"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "welcomeBack": "Bon retour, {name}",
+    "sampleProject": "Projet exemple",
+    "sampleDescription": "C'est un projet exemple pour te montrer comment ça fonctionne. Tu peux le modifier ou le supprimer.",
+    "createNew": "Créer",
+    "onboarding": {
+      "title": "Pour commencer",
+      "step1": "Explore le projet exemple",
+      "step2": "Crée ton premier projet",
+      "step3": "Invite un membre d'équipe",
+      "step4": "Connecte tes outils",
+      "progress": "{completed} sur {total} complétés"
+    }
+  },
+  "pricing": {
+    "title": "Tarification simple et transparente",
+    "subtitle": "Tous les prix en CAD. Pas de frais par utilisateur.",
+    "monthly": "Mensuel",
+    "annual": "Annuel",
+    "annualSave": "Économise 17%",
+    "recommended": "Le plus populaire",
+    "freeTier": "Gratuit",
+    "proTier": "Pro",
+    "businessTier": "Affaires",
+    "startTrial": "Commence ton essai de 14 jours",
+    "currentPlan": "Forfait actuel",
+    "perMonth": "/mois"
+  },
+  "trial": {
+    "daysLeft": "Il te reste {days} jours d'essai",
+    "upgradeNow": "Passe à la version payante",
+    "trialEnded": "Ton essai est terminé",
+    "losingAccess": "Tu perds l'accès à :",
+    "keepFeatures": "Garde toutes les fonctionnalités"
+  },
+  "referral": {
+    "title": "Donne un mois, reçois un mois",
+    "description": "Partage ton code de parrainage. Quand un ami s'inscrit, vous recevez tous les deux 1 mois gratuit.",
+    "yourCode": "Ton code de parrainage",
+    "copied": "Copié!",
+    "share": "Partager"
+  },
+  "legal": {
+    "privacy": "Politique de confidentialité",
+    "terms": "Conditions d'utilisation"
+  }
+}

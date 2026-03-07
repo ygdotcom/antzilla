@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Decisions{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <h2 class="text-2xl font-semibold text-white">Decisions</h2>
+
+  <!-- Businesses in Validation -->
+  <section class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="p-4 border-b border-zinc-800">
+      <h3 class="font-semibold text-white">Businesses in Validation</h3>
+    </div>
+    <div class="p-4">
+      {% for b in validating|default([]) %}
+      <div class="flex items-center justify-between gap-4 p-4 rounded-lg border border-zinc-800 bg-black/50 mb-3 last:mb-0">
+        <div class="flex-1 min-w-0">
+          <p class="font-medium text-white">{{ b.name }}</p>
+          <div class="flex flex-wrap gap-3 mt-2 text-sm">
+            <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium
+              {% if b.status == 'building' %}bg-yellow-500/20 text-yellow-400 border border-yellow-500/30
+              {% elif b.status == 'pre_launch' %}bg-blue-500/20 text-blue-400 border border-blue-500/30
+              {% else %}bg-zinc-700 text-zinc-400 border border-zinc-600{% endif %}">
+              {{ b.status }}
+            </span>
+            <span class="text-zinc-400">MRR: ${{ "%.0f"|format(b.mrr|default(0)) }}</span>
+            {% if b.kill_score is not none %}
+            <span class="{% if b.kill_score > 70 %}text-green-400{% elif b.kill_score >= 30 %}text-yellow-400{% else %}text-red-400{% endif %} font-medium">
+              Kill: {{ "%.0f"|format(b.kill_score) }}
+            </span>
+            {% endif %}
+            <span class="text-zinc-500">{{ b.age_days|default(0) }} days</span>
+          </div>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button
+            type="button"
+            hx-post="/business/{{ b.slug }}/advance"
+            hx-swap="outerHTML"
+            hx-target="closest .flex.items-center.justify-between"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 transition-colors"
+          >
+            <span aria-hidden="true">✓</span> GO
+          </button>
+          <button
+            type="button"
+            hx-post="/business/{{ b.slug }}/kill"
+            hx-swap="outerHTML"
+            hx-target="closest .flex.items-center.justify-between"
+            hx-redirect="/decisions"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors"
+          >
+            <span aria-hidden="true">✕</span> KILL
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-zinc-500 py-6 text-center">No businesses in validation</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Kill Alerts -->
+  <section class="rounded-xl border overflow-hidden {% if kill_alerts|default([])|length > 0 %}border-red-500/50 bg-red-500/5{% else %}border-zinc-800 bg-zinc-900{% endif %}">
+    <div class="p-4 border-b {% if kill_alerts|default([])|length > 0 %}border-red-500/30{% else %}border-zinc-800{% endif %}">
+      <h3 class="font-semibold {% if kill_alerts|default([])|length > 0 %}text-red-400{% else %}text-white{% endif %}">
+        Kill Alerts
+        {% if kill_alerts|default([])|length > 0 %}
+        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-500/30 text-red-300">{{ kill_alerts|length }} alert{{ kill_alerts|length != 1 and 's' or '' }}</span>
+        {% endif %}
+      </h3>
+    </div>
+    <div class="p-4">
+      {% if kill_alerts|default([])|length > 0 %}
+      <div class="space-y-3">
+        <p class="text-red-300 font-medium">⚠️ Businesses with kill score &lt; 30 after 8+ weeks — recommend KILL</p>
+        {% for k in kill_alerts %}
+        <div class="flex items-center justify-between p-4 rounded-lg border border-red-500/30 bg-red-500/10">
+          <div>
+            <a href="/business/{{ k.slug }}" class="font-medium text-white hover:text-brand">{{ k.name }}</a>
+            <p class="text-sm text-red-300 mt-0.5">Kill score: {{ "%.0f"|format(k.kill_score) }}</p>
+          </div>
+          <button
+            type="button"
+            hx-post="/business/{{ k.slug }}/kill"
+            hx-redirect="/decisions"
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+          >
+            KILL
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-zinc-500 py-4">No kill alerts</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- Outreach Approval Queue -->
+  <section class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="p-4 border-b border-zinc-800 flex items-center justify-between">
+      <h3 class="font-semibold text-white">Outreach Approval Queue</h3>
+      {% set pending_count = outreach_queue|default([])|length %}
+      {% if pending_count > 0 %}
+      <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+        {{ pending_count }}
+      </span>
+      {% endif %}
+    </div>
+    <div class="p-4">
+      {% for o in outreach_queue|default([]) %}
+      <div class="flex items-center justify-between gap-4 p-4 rounded-lg border border-zinc-800 bg-black/50 mb-3 last:mb-0">
+        <div class="flex-1 min-w-0">
+          <p class="font-medium text-white">{{ o.name }}</p>
+          <p class="text-sm text-zinc-400">{{ o.company|default('—') }} · {{ o.email }}</p>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-sm {% if o.score >= 70 %}text-green-400{% elif o.score >= 50 %}text-yellow-400{% else %}text-red-400{% endif %} font-medium">
+              Score: {{ "%.0f"|format(o.score) }}
+            </span>
+            <span class="text-zinc-500">·</span>
+            <span class="text-sm text-zinc-400">{{ o.biz_name }}</span>
+          </div>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button
+            type="button"
+            hx-post="/leads/{{ o.id }}/approve"
+            hx-swap="outerHTML"
+            hx-target="closest .flex.items-center.justify-between"
+            class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-green-400 border border-green-500/30 hover:bg-green-500/20 transition-colors"
+            title="Approve"
+          >
+            <span aria-hidden="true">✓</span>
+          </button>
+          <button
+            type="button"
+            hx-post="/leads/{{ o.id }}/reject"
+            hx-swap="outerHTML"
+            hx-target="closest .flex.items-center.justify-between"
+            class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-red-400 border border-red-500/30 hover:bg-red-500/20 transition-colors"
+            title="Reject"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-zinc-500 py-6 text-center">No pending outreach messages</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Pending Escalations -->
+  <section class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="p-4 border-b border-zinc-800">
+      <h3 class="font-semibold text-white">Pending Escalations</h3>
+    </div>
+    <div class="p-4">
+      {% for e in escalations|default([]) %}
+      <div class="flex items-center justify-between gap-4 p-4 rounded-lg border border-zinc-800 bg-black/50 mb-3 last:mb-0">
+        <div>
+          <p class="font-medium text-white">{{ e.agent }}</p>
+          <p class="text-sm text-zinc-400">{{ e.action }}</p>
+          <p class="text-xs text-zinc-500 mt-1">{{ e.at[:19] if e.at else '—' }}</p>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-zinc-500 py-6 text-center">No pending escalations</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Decision History -->
+  <section class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="p-4 border-b border-zinc-800">
+      <h3 class="font-semibold text-white">Decision History</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Business</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Status</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in history|default([]) %}
+          <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+            <td class="px-4 py-3">
+              <a href="/business/{{ h.slug }}" class="text-white hover:text-brand font-medium">{{ h.name }}</a>
+            </td>
+            <td class="px-4 py-3">
+              {% if h.status == 'live' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">live</span>
+              {% elif h.status == 'killed' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">killed</span>
+              {% else %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400">{{ h.status }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-zinc-400">
+              {% if h.status == 'live' %}GO{% elif h.status == 'killed' %}KILL{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3" class="px-4 py-8 text-center text-zinc-500">No decision history yet</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

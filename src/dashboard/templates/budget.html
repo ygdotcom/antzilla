@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Budget{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <h2 class="text-2xl font-bold text-white">Budget</h2>
+
+  <!-- Top: Today's spend, limit, month total, projection -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="md:col-span-2 bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-zinc-400">Today's spend</span>
+        <span class="text-2xl font-bold text-white">${{ "%.2f"|format(spend_today|default(0)) }} / ${{ "%.0f"|format(budget_daily_limit|default(50)) }}</span>
+      </div>
+      {% set pct = [100, ((spend_today|default(0)) / (budget_daily_limit|default(50)) * 100)|round(0)]|min %}
+      <div class="h-4 bg-zinc-800 rounded-full overflow-hidden">
+        <div class="h-full rounded-full {% if pct >= 90 %}bg-red-500{% elif pct >= 70 %}bg-yellow-500{% else %}bg-brand{% endif %} transition-all" style="width: {{ pct }}%"></div>
+      </div>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+      <p class="text-zinc-400 text-sm mb-1">Month total</p>
+      <p class="text-2xl font-bold text-white">${{ "%.2f"|format(spend_month|default(0)) }}</p>
+    </div>
+  </div>
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <p class="text-zinc-400 text-sm mb-1">Projection</p>
+    <p class="text-xl font-semibold text-white">${{ "%.0f"|format((spend_month|default(0)) + (spend_today|default(0)) * 24) }} (rest of month at today's rate)</p>
+  </div>
+
+  <!-- Agent cost breakdown -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <h3 class="font-semibold text-white p-4 border-b border-zinc-800">Agent Cost Breakdown</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Agent</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Monthly Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in (agent_costs|default([]))|sort(attribute='cost', reverse=True) %}
+          <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+            <td class="px-4 py-3 text-white">{{ a.agent }}</td>
+            <td class="px-4 py-3 text-zinc-300">${{ "%.2f"|format(a.cost|default(0)) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="2" class="px-4 py-8 text-center text-zinc-500">No agent costs this month</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Business allocation -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="font-semibold text-white mb-4">Business Allocation</h3>
+    <div class="space-y-4">
+      {% for b in allocations|default([]) %}
+      <div class="flex items-center gap-4">
+        <span class="text-white font-medium w-40 shrink-0">{{ b.name }}</span>
+        <div class="flex-1 flex items-center gap-3">
+          <input type="range" min="0" max="100" value="{{ b.budget|default(10) }}"
+            oninput="this.nextElementSibling.textContent='$'+this.value"
+            class="flex-1 h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-brand">
+          <span class="text-zinc-400 text-sm w-12">${{ "%.0f"|format(b.budget|default(10)) }}</span>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-zinc-500 text-sm">No active businesses</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Emergency controls -->
+  <div class="bg-zinc-900 rounded-xl border-2 border-red-500/50 p-6">
+    <h3 class="font-semibold text-red-400 mb-4">Emergency Controls</h3>
+    <div class="flex flex-wrap gap-3">
+      <button
+        type="button"
+        hx-post="/budget/throttle-all"
+        hx-swap="outerHTML"
+        class="bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg px-4 py-2 transition-colors"
+      >
+        Throttle All to Haiku
+      </button>
+      <button
+        type="button"
+        hx-post="/budget/pause-nonessential"
+        hx-swap="outerHTML"
+        class="bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg px-4 py-2 transition-colors"
+      >
+        Pause Non-Essential
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}

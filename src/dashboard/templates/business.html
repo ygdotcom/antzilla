@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}{{ business.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <!-- Header -->
+  <div class="flex flex-wrap items-center gap-4">
+    <h2 class="text-2xl font-bold text-white">{{ business.name }}</h2>
+    {% if business.domain %}
+    <a href="https://{{ business.domain }}" target="_blank" rel="noopener" class="text-brand hover:underline">{{ business.domain }}</a>
+    {% endif %}
+    {% if business.status == 'live' %}
+    <span class="inline-flex px-2.5 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">live</span>
+    {% elif business.status == 'building' %}
+    <span class="inline-flex px-2.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">building</span>
+    {% elif business.status == 'killed' %}
+    <span class="inline-flex px-2.5 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">killed</span>
+    {% else %}
+    <span class="inline-flex px-2.5 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400 border border-zinc-600">setup</span>
+    {% endif %}
+    <div class="ml-auto">
+      <span class="text-zinc-400 text-sm">Kill Score</span>
+      <span class="text-5xl font-bold ml-2 {% if business.kill_score is none %}text-zinc-500{% elif business.kill_score > 70 %}text-brand{% elif business.kill_score >= 30 %}text-yellow-400{% else %}text-red-500{% endif %}">
+        {{ "%.0f"|format(business.kill_score) if business.kill_score is not none else "—" }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Metrics row -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+      <p class="text-zinc-400 text-sm mb-1">MRR</p>
+      <p class="text-2xl font-bold text-white">${{ "%.0f"|format(business.mrr|default(0)) }}</p>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+      <p class="text-zinc-400 text-sm mb-1">Customers</p>
+      <p class="text-2xl font-bold text-white">{{ business.customers|default(0) }}</p>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+      <p class="text-zinc-400 text-sm mb-1">Voice Calls</p>
+      <p class="text-2xl font-bold text-white">{{ voice.total|default(0) }} / {{ voice.completed|default(0) }} / {{ voice.meetings|default(0) }}</p>
+      <p class="text-zinc-500 text-xs mt-1">total / completed / meetings</p>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+      <p class="text-zinc-400 text-sm mb-1">Connect Rate</p>
+      <p class="text-2xl font-bold {% if (voice.connect_rate|default(0)) >= 50 %}text-brand{% elif (voice.connect_rate|default(0)) >= 25 %}text-yellow-400{% else %}text-red-500{% endif %}">{{ voice.connect_rate|default(0) }}%</p>
+    </div>
+  </div>
+
+  <!-- Funnel visualization -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="font-semibold text-white mb-4">Funnel</h3>
+    {% set stages = ['new', 'enriched', 'contacted', 'replied', 'converted'] %}
+    {% set funnel_data = funnel|default({}) %}
+    {% set funnel_counts = [funnel_data.get(s, 0) for s in stages] %}
+    {% set max_count = (funnel_counts + [1])|max %}
+    <div class="space-y-4">
+      {% for stage in stages %}
+      {% set count = funnel_data.get(stage, 0) %}
+      {% set prev_count = funnel_data.get(stages[loop.index0 - 1], 1) if loop.index0 > 0 else 1 %}
+      {% set rate = (count / prev_count * 100) if prev_count > 0 else 0 %}
+      <div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="text-zinc-400 capitalize">{{ stage }}</span>
+          <span class="text-white">{{ count }}{% if loop.index0 > 0 %} <span class="text-zinc-500">({{ "%.0f"|format(rate) }}% from prev)</span>{% endif %}</span>
+        </div>
+        <div class="h-3 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-brand transition-all" style="width: {{ [100, (count / max_count * 100)|round(0)]|min }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- CONTROLS section -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="font-semibold text-white mb-4">Controls</h3>
+    <form
+      hx-post="/business/{{ business.slug }}/controls"
+      hx-target="#controls-status"
+      hx-swap="innerHTML"
+      class="space-y-6"
+    >
+      <div>
+        <label class="block text-zinc-400 text-sm mb-2">Budget (daily) $<span id="budget-value">{{ budget_daily|default(10) }}</span></label>
+        <input type="range" name="budget_daily" min="0" max="100" value="{{ budget_daily|default(10) }}"
+          oninput="document.getElementById('budget-value').textContent=this.value"
+          class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-brand">
+      </div>
+      <div>
+        <label class="block text-zinc-400 text-sm mb-2">Email volume <span id="email-value">{{ email_volume|default(50) }}</span></label>
+        <input type="range" name="email_volume" min="0" max="500" value="{{ email_volume|default(50) }}"
+          oninput="document.getElementById('email-value').textContent=this.value"
+          class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-brand">
+      </div>
+      <div>
+        <label class="block text-zinc-400 text-sm mb-2">Voice volume <span id="voice-value">{{ voice_volume|default(10) }}</span></label>
+        <input type="range" name="voice_volume" min="0" max="50" value="{{ voice_volume|default(10) }}"
+          oninput="document.getElementById('voice-value').textContent=this.value"
+          class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-brand">
+      </div>
+      <div class="flex items-center gap-3">
+        <input type="hidden" name="paused" value="false">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" name="paused" value="true" {% if paused %}checked{% endif %}
+            class="sr-only peer">
+          <span class="w-11 h-6 rounded-full bg-zinc-700 peer-checked:bg-red-500 block transition-colors relative">
+            <span class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-all peer-checked:translate-x-5 pointer-events-none"></span>
+          </span>
+        </label>
+        <span class="text-zinc-400 text-sm">Pause</span>
+      </div>
+      <div class="flex flex-wrap gap-3 items-center">
+        <button type="submit" class="bg-brand text-black font-semibold rounded-lg px-4 py-2 hover:opacity-90 transition-opacity">Save</button>
+        <div id="controls-status" class="flex items-center"></div>
+      </div>
+    </form>
+    <div class="flex gap-3 mt-4 pt-4 border-t border-zinc-800">
+      <button
+        type="button"
+        hx-post="/business/{{ business.slug }}/kill"
+        hx-confirm="Are you sure? This kills the business."
+        hx-swap="none"
+        class="bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg px-4 py-2 transition-colors"
+      >
+        Kill
+      </button>
+      <button
+        type="button"
+        hx-post="/business/{{ business.slug }}/double-down"
+        hx-swap="none"
+        class="bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-4 py-2 transition-colors"
+      >
+        Double Down
+      </button>
+    </div>
+  </div>
+
+  <!-- Outreach Approval Queue -->
+  {% if pending_outreach %}
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <h3 class="font-semibold text-white p-4 border-b border-zinc-800">Outreach Approval Queue</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Name</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Company</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Email</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Score</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in pending_outreach %}
+          <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+            <td class="px-4 py-3 text-white">{{ p.name or "—" }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ p.company or "—" }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ p.email or "—" }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ "%.0f"|format(p.score) }}</td>
+            <td class="px-4 py-3">
+              <button class="text-brand hover:underline text-sm mr-2">Approve</button>
+              <button class="text-red-400 hover:underline text-sm">Reject</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent agent activity -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <h3 class="font-semibold text-white p-4 border-b border-zinc-800">Recent Agent Activity</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Agent</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Action</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Status</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Cost</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs|default([]) %}
+          <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+            <td class="px-4 py-3 text-white">{{ log.agent }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ log.action }}</td>
+            <td class="px-4 py-3">
+              {% if log.status == 'success' %}
+              <span class="text-brand">success</span>
+              {% elif log.status == 'error' %}
+              <span class="text-red-500">error</span>
+              {% else %}
+              <span class="text-zinc-400">{{ log.status }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-zinc-300">${{ "%.4f"|format(log.cost|default(0)) }}</td>
+            <td class="px-4 py-3 text-zinc-500 text-sm">{{ log.at[:19] if log.at else "—" }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="px-4 py-8 text-center text-zinc-500">No activity yet</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

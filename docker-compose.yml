@@ -1,0 +1,166 @@
+services:
+  # ── Postgres with pgvector (shared: factory DB + hatchet DB + plausible DB) ──
+  postgres:
+    image: pgvector/pgvector:pg16
+    command: postgres -c 'max_connections=200'
+    restart: always
+    environment:
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: factory
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+      - ./scripts/init-dbs.sql:/docker-entrypoint-initdb.d/00_init_dbs.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Hatchet: migration ──
+  hatchet-migration:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-migrate:latest
+    command: /hatchet/hatchet-migrate
+    environment:
+      DATABASE_URL: postgres://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/hatchet
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Hatchet: config generation (creates API tokens, keys) ──
+  hatchet-setup:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:latest
+    command: /hatchet/hatchet-admin quickstart --skip certs --generated-config-dir /hatchet/config --overwrite=false
+    environment:
+      DATABASE_URL: postgres://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/hatchet
+      SERVER_MSGQUEUE_KIND: postgres
+      SERVER_AUTH_COOKIE_DOMAIN: localhost:8080
+      SERVER_AUTH_COOKIE_INSECURE: "t"
+      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
+      SERVER_GRPC_INSECURE: "t"
+      SERVER_GRPC_BROADCAST_ADDRESS: hatchet-engine:7070
+      SERVER_DEFAULT_ENGINE_VERSION: "V1"
+      SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: hatchet-engine:7070
+    volumes:
+      - hatchet_config:/hatchet/config
+      - hatchet_certs:/hatchet/certs
+    depends_on:
+      hatchet-migration:
+        condition: service_completed_successfully
+
+  # ── Hatchet Engine (gRPC for workers) ──
+  hatchet-engine:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-engine:latest
+    command: /hatchet/hatchet-engine --config /hatchet/config
+    restart: on-failure
+    depends_on:
+      hatchet-setup:
+        condition: service_completed_successfully
+    ports:
+      - "7070:7070"
+    environment:
+      DATABASE_URL: postgres://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/hatchet
+      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
+      SERVER_GRPC_INSECURE: "t"
+    volumes:
+      - hatchet_config:/hatchet/config
+      - hatchet_certs:/hatchet/certs
+
+  # ── Hatchet Dashboard ──
+  hatchet-dashboard:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-dashboard:latest
+    command: sh ./entrypoint.sh --config /hatchet/config
+    restart: on-failure
+    depends_on:
+      hatchet-setup:
+        condition: service_completed_successfully
+    ports:
+      - "8080:80"
+    environment:
+      DATABASE_URL: postgres://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/hatchet
+    volumes:
+      - hatchet_config:/hatchet/config
+      - hatchet_certs:/hatchet/certs
+
+  # ── Factory Worker (Python agents) ──
+  factory-worker:
+    build: .
+    restart: on-failure
+    depends_on:
+      hatchet-engine:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/factory
+      HATCHET_CLIENT_TLS_STRATEGY: none
+    volumes:
+      - hatchet_config:/hatchet/config
+      - ./src:/app/src
+      - ./prompts:/app/prompts
+
+  # ── CEO Dashboard (FastAPI + HTMX) ──
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/factory
+      DASHBOARD_USER: ${DASHBOARD_USER:-admin}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-factory}
+    volumes:
+      - ./src:/app/src
+
+  # ── Plausible Analytics (self-hosted, privacy-first) ──
+  plausible-events-db:
+    image: clickhouse/clickhouse-server:24-alpine
+    restart: always
+    volumes:
+      - plausible_events_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  plausible:
+    image: ghcr.io/plausible/community-edition:latest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      plausible-events-db:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/plausible
+      CLICKHOUSE_DATABASE_URL: http://plausible-events-db:8123/plausible_events
+      BASE_URL: ${PLAUSIBLE_BASE_URL:-http://localhost:8000}
+      SECRET_KEY_BASE: ${PLAUSIBLE_SECRET:-generate_me_with_openssl_rand_base64_64}
+
+  # ── Uptime Kuma (self-hosted uptime monitoring) ──
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    restart: always
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+
+volumes:
+  postgres_data:
+  plausible_events_data:
+  uptime_kuma_data:
+  hatchet_config:
+  hatchet_certs:

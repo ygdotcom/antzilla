@@ -1,0 +1,78 @@
+{
+  "common": {
+    "appName": "{{APP_NAME}}",
+    "tagline": "Made in Canada",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "back": "Back"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "pricing": "Pricing",
+    "blog": "Blog",
+    "login": "Log in",
+    "signup": "Sign up",
+    "logout": "Log out"
+  },
+  "auth": {
+    "loginTitle": "Welcome back",
+    "signupTitle": "Get started free",
+    "nameLabel": "Full name",
+    "emailLabel": "Email",
+    "phoneLabel": "Phone",
+    "signupCta": "Start your 14-day free trial",
+    "loginCta": "Log in",
+    "googleCta": "Continue with Google",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcomeBack": "Welcome back, {name}",
+    "sampleProject": "Sample Project",
+    "sampleDescription": "This is a sample project to show you how things work. Feel free to edit or delete it.",
+    "createNew": "Create new",
+    "onboarding": {
+      "title": "Getting started",
+      "step1": "Explore the sample project",
+      "step2": "Create your first project",
+      "step3": "Invite a team member",
+      "step4": "Connect your tools",
+      "progress": "{completed} of {total} completed"
+    }
+  },
+  "pricing": {
+    "title": "Simple, transparent pricing",
+    "subtitle": "All prices in CAD. No per-seat fees.",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "annualSave": "Save 17%",
+    "recommended": "Most popular",
+    "freeTier": "Free",
+    "proTier": "Pro",
+    "businessTier": "Business",
+    "startTrial": "Start 14-day trial",
+    "currentPlan": "Current plan",
+    "perMonth": "/mo"
+  },
+  "trial": {
+    "daysLeft": "{days} days left in your trial",
+    "upgradeNow": "Upgrade now",
+    "trialEnded": "Your trial has ended",
+    "losingAccess": "You're losing access to:",
+    "keepFeatures": "Keep all features"
+  },
+  "referral": {
+    "title": "Give a month, get a month",
+    "description": "Share your referral code. When a friend signs up, you both get 1 month free.",
+    "yourCode": "Your referral code",
+    "copied": "Copied!",
+    "share": "Share"
+  },
+  "legal": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service"
+  }
+}

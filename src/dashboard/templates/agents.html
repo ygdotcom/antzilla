@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Agents{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <h2 class="text-2xl font-bold text-white">Agents</h2>
+
+  <!-- Agents table -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Agent Name</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Runs (7d)</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Success Rate</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Errors</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Cost</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Last Run</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in agents|default([])|sort(attribute='runs', reverse=True) %}
+          <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+            <td class="px-4 py-3 text-white font-medium">{{ a.name }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ a.runs }}</td>
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-2">
+                <div class="w-24 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full {% if a.success_rate >= 95 %}bg-brand{% elif a.success_rate >= 80 %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ a.success_rate|min(100) }}%"></div>
+                </div>
+                <span class="{% if a.success_rate >= 95 %}text-brand{% elif a.success_rate >= 80 %}text-yellow-400{% else %}text-red-500{% endif %} text-sm">{{ a.success_rate }}%</span>
+              </div>
+            </td>
+            <td class="px-4 py-3 {% if a.errors > 0 %}text-red-400{% else %}text-zinc-400{% endif %}">{{ a.errors }}</td>
+            <td class="px-4 py-3 text-zinc-300">${{ "%.2f"|format(a.cost|default(0)) }}</td>
+            <td class="px-4 py-3 text-zinc-500 text-sm">{{ a.last_run[:19] if a.last_run and a.last_run != 'never' else 'never' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="px-4 py-8 text-center text-zinc-500">No agents yet</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Error log -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="font-semibold text-white mb-4">Error Log</h3>
+    <ul class="space-y-3">
+      {% for e in errors|default([]) %}
+      <li class="flex flex-wrap gap-2 items-start text-sm border-b border-zinc-800/50 pb-3 last:border-0 last:pb-0">
+        <span class="text-brand font-medium">{{ e.agent }}</span>
+        <span class="text-zinc-500">|</span>
+        <span class="text-zinc-400">{{ e.action }}</span>
+        <span class="text-zinc-500">|</span>
+        <span class="text-red-400 flex-1">{{ e.error|default('Unknown error') }}</span>
+        <span class="text-zinc-600 text-xs">{{ e.at[:19] if e.at else "" }}</span>
+      </li>
+      {% else %}
+      <li class="text-zinc-500 text-sm">No recent errors</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Improvement proposals -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="font-semibold text-white mb-4">Improvement Proposals</h3>
+    <div class="space-y-4">
+      {% for p in proposals|default([]) %}
+      <div class="border border-zinc-800 rounded-lg p-4 flex flex-wrap items-start justify-between gap-4" id="proposal-{{ p.id }}">
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap gap-2 mb-2">
+            <span class="text-brand font-medium">{{ p.agent }}</span>
+            <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400">{{ p.category|default('general') }}</span>
+            {% if p.priority %}
+            <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {% if p.priority == 'high' %}bg-red-500/20 text-red-400{% elif p.priority == 'medium' %}bg-yellow-500/20 text-yellow-400{% else %}bg-zinc-600 text-zinc-300{% endif %}">{{ p.priority }}</span>
+            {% endif %}
+            {% if p.impact is not none %}
+            <span class="text-zinc-500 text-xs">Impact: {{ "%.1f"|format(p.impact) }}</span>
+            {% endif %}
+          </div>
+          <p class="text-zinc-300 text-sm">{{ p.description|default('') }}</p>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button
+            hx-post="/agents/proposals/{{ p.id }}/approve"
+            hx-target="#proposal-{{ p.id }}"
+            hx-swap="innerHTML"
+            class="bg-brand text-black font-medium rounded-lg px-3 py-1.5 text-sm hover:opacity-90 transition-opacity"
+          >
+            Approve
+          </button>
+          <button
+            hx-post="/agents/proposals/{{ p.id }}/reject"
+            hx-target="#proposal-{{ p.id }}"
+            hx-swap="innerHTML"
+            class="bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg px-3 py-1.5 text-sm transition-colors"
+          >
+            Reject
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-zinc-500 text-sm">No improvement proposals</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

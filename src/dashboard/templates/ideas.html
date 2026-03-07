@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Ideas{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <h2 class="text-2xl font-semibold text-white">Ideas</h2>
+
+  <!-- Quick stats -->
+  {% set total = ideas|default([])|length %}
+  {% set new_count = ideas|selectattr('status', 'equalto', 'new')|list|length %}
+  {% set scouting_count = ideas|selectattr('status', 'equalto', 'scouting')|list|length %}
+  {% set validated_count = ideas|selectattr('status', 'equalto', 'validated')|list|length %}
+  {% set building_count = ideas|selectattr('status', 'equalto', 'building')|list|length %}
+  {% set killed_count = ideas|selectattr('status', 'equalto', 'killed')|list|length %}
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+      <p class="text-zinc-400 text-sm mb-1">Total Ideas</p>
+      <p class="text-2xl font-bold text-white">{{ total }}</p>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+      <p class="text-zinc-400 text-sm mb-1">Scouting</p>
+      <p class="text-2xl font-bold text-blue-400">{{ scouting_count }}</p>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+      <p class="text-zinc-400 text-sm mb-1">Validated</p>
+      <p class="text-2xl font-bold text-green-400">{{ validated_count }}</p>
+    </div>
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+      <p class="text-zinc-400 text-sm mb-1">Building</p>
+      <p class="text-2xl font-bold text-yellow-400">{{ building_count }}</p>
+    </div>
+  </div>
+
+  <!-- Ideas table -->
+  <section class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Name</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Niche</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">US Equivalent</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Score</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Status</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in ideas|default([]) %}
+          <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+            <td class="px-4 py-3">
+              <a href="/ideas/{{ i.id }}" class="text-white hover:text-brand font-medium">{{ i.name }}</a>
+            </td>
+            <td class="px-4 py-3 text-zinc-300">{{ i.niche|default('—') }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ i.us_equivalent|default('—') }}</td>
+            <td class="px-4 py-3">
+              {% if i.score is not none %}
+                {% if i.score >= 8 %}
+                <span class="font-medium text-green-400">{{ "%.1f"|format(i.score) }}</span>
+                {% elif i.score >= 7 %}
+                <span class="font-medium text-yellow-400">{{ "%.1f"|format(i.score) }}</span>
+                {% else %}
+                <span class="font-medium text-red-400">{{ "%.1f"|format(i.score) }}</span>
+                {% endif %}
+              {% else %}
+              <span class="text-zinc-500">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if i.status == 'new' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400 border border-zinc-600">new</span>
+              {% elif i.status == 'scouting' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">scouting</span>
+              {% elif i.status == 'validated' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">validated</span>
+              {% elif i.status == 'building' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">building</span>
+              {% elif i.status == 'killed' %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">killed</span>
+              {% else %}
+              <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400">{{ i.status }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if i.status == 'new' %}
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  hx-post="/ideas/{{ i.id }}/advance"
+                  hx-swap="outerHTML"
+                  hx-target="closest tr"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
+                >
+                  Scout
+                </button>
+                <button
+                  type="button"
+                  hx-post="/ideas/{{ i.id }}/archive"
+                  hx-swap="outerHTML"
+                  hx-target="closest tr"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 text-zinc-400 hover:bg-zinc-600 transition-colors"
+                >
+                  Archive
+                </button>
+              </div>
+              {% else %}
+              <span class="text-zinc-500 text-sm">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="px-4 py-8 text-center text-zinc-500">No ideas yet</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

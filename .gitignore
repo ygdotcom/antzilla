@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+*.egg
+
+# Environment
+.env
+.env.local
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+hatchet_config/
+hatchet_certs/
+
+# Template repo build artifacts
+template-repo/node_modules/
+template-repo/.next/
+template-repo/next-env.d.ts
+template-repo/package-lock.json
+
+# Test cache
+.pytest_cache/
+.mypy_cache/
