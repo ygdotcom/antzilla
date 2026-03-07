@@ -199,6 +199,33 @@ The system runs on a single Hetzner VPS with Docker. It uses Hatchet as the work
 - Unlike Temporal: no determinism constraint, just normal Python, simpler self-hosting (Hatchet engine + Postgres only), built-in dashboard
 - Hatchet handles: durable execution, retries with backoff, DAG workflows, cron scheduling, concurrency control, observability
 
+### 14. EVENT-DRIVEN PIPELINE — NO WAITING
+
+The pipeline from idea to live business must be EVENT-DRIVEN, not cron-driven. Every step cascades IMMEDIATELY to the next without waiting for the Meta Orchestrator's daily cron.
+
+**The cascade:**
+```
+Idea Factory finds idea (score ≥ 7)
+    → IMMEDIATELY triggers Deep Scout (parallel: 3 ideas = 3 scouts running simultaneously)
+        → Scout says GO → IMMEDIATELY triggers Validator (Brand light + landing page + ads)
+            → 7 days of ads (the ONLY forced wait in the pipeline)
+            → Signup > 5% → IMMEDIATELY triggers Brand full → Domain Provisioner → Builder
+                → Builder deploys → IMMEDIATELY triggers Distribution Engine
+                    → Lead Pipeline finds leads → Enrichment → Outreach starts
+```
+
+**Timeline: idea to first cold email sent = ~10 days** (7 days of validation + 3 days of build/deploy). Without the validation wait, a manually approved idea goes from GO to selling in ~48 hours.
+
+**Parallelism:** The factory can run 5+ pipelines simultaneously:
+- Business A: live, selling, 50 emails/day
+- Business B: in validation (day 4 of 7)
+- Ideas C, D, E: being scouted by 3 parallel Deep Scout runs
+- Idea F: scoring in Idea Factory
+
+Hatchet handles all concurrency. Budget Guardian enforces the total daily spend cap across all parallel workflows. If budget is tight, it pauses lower-priority pipelines (new ideas) to protect revenue-generating ones (live businesses).
+
+**The Meta Orchestrator's daily 6AM cron is OVERSIGHT ONLY** — reviewing metrics, reallocating budgets, flagging problems. It does NOT gate pipeline advancement. Events do that.
+
 ### 13. UNIVERSAL DISTRIBUTION ARCHITECTURE — THE MOST IMPORTANT SECTION
 
 The distribution system must sell ANY business the factory creates, not just one. It takes 5 inputs (ICP, product, value prop, pricing, competitors) and autonomously figures out channels, finds leads, and runs outreach. Here's how:
@@ -1133,7 +1160,29 @@ Each agent below needs its own Python file following the pattern above. I'm spec
 
 ### Agent 1: META ORCHESTRATOR (`meta_orchestrator.py`)
 
-**Trigger:** Cron daily 6:00 AM ET
+**Trigger:** Cron daily 6:00 AM ET (daily review) + **EVENT-DRIVEN** (triggered immediately when any pipeline event occurs)
+
+**CRITICAL CHANGE: The Meta Orchestrator is NOT a bottleneck.** It does daily reviews, but the pipeline advances in REAL-TIME via event cascading. When Idea Factory scores an idea ≥ 7, Scout triggers IMMEDIATELY — it doesn't wait for Meta's next morning cron.
+
+**Event cascade (runs within minutes, not days):**
+- Idea scored ≥ 7.0 → IMMEDIATELY trigger Deep Scout (parallel: multiple ideas can be scouted simultaneously)
+- Scout says GO → IMMEDIATELY trigger Validator (Brand light mode runs first, then landing page + ads)
+- Validator says GO (after 7 days of ads) → IMMEDIATELY trigger Brand full mode → Domain Provisioner → Builder (these 3 run in sequence but START within minutes of validation completing)
+- Builder deploys → IMMEDIATELY trigger Distribution Engine (Lead Pipeline starts finding leads)
+- Lead Pipeline finds leads → IMMEDIATELY trigger Enrichment → Outreach begins
+
+**Parallelism:** The factory can run MULTIPLE pipelines simultaneously:
+- Idea A in validation + Idea B in scouting + Business C live and selling — all at the same time
+- Hatchet handles concurrency natively. Each business gets its own workflow runs.
+- Budget Guardian enforces total daily spend cap across all parallel workflows.
+
+**The daily 6AM cron is for OVERSIGHT only:**
+- Review metrics across all businesses
+- Reallocate budgets
+- Flag problems
+- Generate Slack digest
+- Kill/escalate decisions
+- It does NOT advance the pipeline — events do that
 **Claude model:** claude-opus-4-20250514 (needs deep reasoning)
 **Steps DAG:**
 1. `gather_all_metrics` — Read from: daily_snapshots, agent_logs (last 24h errors), improvements (pending), businesses (status), budget_tracking (yesterday)
@@ -1177,13 +1226,15 @@ RÈGLES:
 
 ### Agent 2: IDEA FACTORY (`idea_factory.py`)
 
-**Trigger:** Cron weekly Monday 5:00 AM + On-demand via Meta
+**Trigger:** Cron DAILY 5:00 AM (not weekly) + On-demand via Meta or Dashboard
 **Claude model:** claude-sonnet-4-20250514
 **Steps DAG:**
 1. `scrape_sources` — HTTP requests to: Google Trends (compare US vs CA), Product Hunt API, Y Combinator directory, IndieHackers, Reddit (r/SaaS, r/smallbusiness, r/entrepreneur), Shopify App Store, AppSumo. Parse results.
 2. `filter_canadian_gap` — For each idea found, search Google.ca and Capterra (filter CA) to check if a Canadian equivalent exists. Keep only ideas where gap exists.
 3. `score_ideas` — Send each idea to Claude Sonnet for scoring on 12 criteria (see prompt). Score ≥ 7.0 → mark as 'scouting' in DB.
-4. `save_and_notify` — Write scored ideas to `ideas` table. Notify Meta Orchestrator of top 3.
+4. `save_and_cascade` — Write scored ideas to `ideas` table. **For EACH idea scoring ≥ 7.0, IMMEDIATELY trigger Deep Scout** via `hatchet.client.admin.run_workflow("deep-scout", {"idea_id": id})`. Multiple scouts can run in parallel. Notify Slack.
+
+**Parallelism:** If Idea Factory finds 3 ideas scoring ≥ 7.0 in one run, it triggers 3 Deep Scout runs simultaneously. No queue, no waiting.
 
 **System prompt:** (save as `prompts/idea_factory.txt`)
 ```
@@ -1233,7 +1284,7 @@ Réponds UNIQUEMENT en JSON array:
 4. `research_regulations` — Search for provincial regulations, bilingual requirements, industry certifications, CASL requirements.
 5. `generate_gtm_playbook` — Using all research, generate the GTM Playbook YAML config (see §13 above). This is the MOST IMPORTANT output — it configures ALL downstream sales/growth agents for this business. Include: ICP params, ranked channels, lead sources, association list, ecosystem integrations, messaging frameworks, signal definitions, outreach cadence, and referral program design.
 6. `synthesize_report` — Send all research to Claude Opus. Generate comprehensive Scout Report (markdown). Include US competitor branding analysis.
-7. `save_and_recommend` — Save Scout Report to `ideas.scout_report`. Save GTM Playbook to `gtm_playbooks` table. Update status. Trigger Meta with GO/NO-GO.
+7. `save_and_cascade` — Save Scout Report to `ideas.scout_report`. Save GTM Playbook to `gtm_playbooks` table. Update status. **If GO → IMMEDIATELY trigger Validator** via `hatchet.client.admin.run_workflow("validator", {"idea_id": id})`. If NO-GO → mark idea as 'killed' and notify Slack. No waiting for Meta Orchestrator.
 
 **System prompt:** (save as `prompts/deep_scout.txt`)
 ```
@@ -1367,7 +1418,7 @@ Aussi, produis un JSON résumé pour le GTM Playbook (ce JSON sera converti en c
 
 ### Agent 4: VALIDATOR (`validator.py`)
 
-**Trigger:** On-demand (triggered by Meta after Scout GO)
+**Trigger:** On-demand (triggered IMMEDIATELY by Deep Scout on GO — not waiting for Meta)
 **Claude model:** claude-sonnet-4-20250514
 **Steps DAG:**
 1. `request_light_brand` — Trigger Brand Agent in light mode. Wait for response (brand_kit_light with colors, font, tone).
@@ -1376,12 +1427,13 @@ Aussi, produis un JSON résumé pour le GTM Playbook (ce JSON sera converti en c
 4. `launch_ads` — Create Google Ads campaign (2-3 keywords, $75 budget) + Meta Ads campaign (ICP targeting, $75 budget) via APIs.
 5. `monitor_daily` — Sub-cron: check ad metrics daily for 7 days. Log to DB.
 6. `evaluate_results` — After 7 days: compile metrics (CPC, CTR, signup rate, cost per lead, FR vs EN split). Use Claude to analyze. Produce GO/KILL recommendation.
-7. `report_to_meta` — Save results. Trigger Meta with recommendation + email list of signups.
+7. `cascade_on_result` — Save results. **If STRONG GO (signup > 5%) → IMMEDIATELY trigger the build pipeline** in sequence: Brand full mode → Domain Provisioner → Builder. These 3 cascade automatically. **If regular GO (signup 2-5%) → notify Dashboard for human GO/KILL decision.** If KILL → mark idea as killed, tear down landing page, notify Slack.
 
 **Kill rules (hardcoded, not LLM-decided):**
 - CPC > $8 after 3 days → pause ads, recommend messaging pivot
-- Signup rate < 2% after 7 days → recommend kill
-- Signup rate > 5% → STRONG GO
+- Signup rate < 2% after 7 days → auto-kill (no human needed)
+- Signup rate 2-5% → GO but human confirms
+- Signup rate > 5% → STRONG GO, auto-cascade to build pipeline immediately
 
 ---
 
@@ -1399,6 +1451,7 @@ FULL MODE:
 2. `generate_brand_kit` — Claude Opus generates full brand kit.
 3. `check_domains` — Namecheap API: check .ca and .com for all name options.
 4. `save_brand_kit` — Save to `businesses.brand_kit` as JSONB.
+5. `cascade_to_provisioner` — **IMMEDIATELY trigger Domain Provisioner** via `hatchet.client.admin.run_workflow("domain-provisioner", {"business_id": id})`
 
 **System prompt:** (save as `prompts/brand_designer.txt`)
 ```
@@ -1473,14 +1526,14 @@ RÈGLES:
 For the remaining agents, here are the key specifications. Each follows the same Hatchet pattern.
 
 #### Agent 6: DOMAIN PROVISIONER (`domain_provisioner.py`)
-- **Trigger:** On-demand from Meta (business approved)
-- **Steps:** buy_primary_domain (Namecheap: .ca preferred, set NS to Cloudflare) → buy_secondary_cold_email_domains (Namecheap: buy 2-3 alternate TLDs like .io, .co for cold outreach — NEVER send cold email from the primary .ca domain) → setup_dns_all_domains (Cloudflare: A, MX, TXT for SPF/DKIM/DMARC on ALL domains) → create_vercel_project → create_github_repo (clone template) → create_supabase_project (enable RLS on every table) → setup_stripe (reverse trial product + free tier + paid tiers in CAD) → setup_resend (transactional on primary domain) → setup_instantly (cold email on secondary domains, start warmup) → buy_twilio_number (local area code: 514 QC, 416 ON, etc.) → create_retell_agents (FR + EN per business) → save_infra_to_db
+- **Trigger:** On-demand — cascaded from Brand Designer (full mode complete) or manually from Dashboard
+- **Steps:** buy_primary_domain (Namecheap: .ca preferred, set NS to Cloudflare) → buy_secondary_cold_email_domains (Namecheap: buy 2-3 alternate TLDs like .io, .co for cold outreach — NEVER send cold email from the primary .ca domain) → setup_dns_all_domains (Cloudflare: A, MX, TXT for SPF/DKIM/DMARC on ALL domains) → create_vercel_project → create_github_repo (clone template) → create_supabase_project (enable RLS on every table) → setup_stripe (reverse trial product + free tier + paid tiers in CAD) → setup_resend (transactional on primary domain) → setup_instantly (cold email on secondary domains, start warmup) → buy_twilio_number (local area code: 514 QC, 416 ON, etc.) → create_retell_agents (FR + EN per business) → save_infra_to_db → **IMMEDIATELY trigger Builder** via `hatchet.client.admin.run_workflow("builder", {"business_id": id})`
 - **Critical:** Stripe SINGLE account mode. Secondary domains for cold email (toituro.io for cold, toituro.ca for transactional). Warmup 4-6 weeks on cold domains before volume.
 - **Stripe setup:** Create 3 products per business: Free tier, Pro tier ($X/mo), Business tier ($Y/mo). Create a trial configuration for reverse trial (14 days, auto-downgrade to Free). Annual variants at 16-20% discount.
 
 #### Agent 7: BUILDER (`builder.py`)
 - **Trigger:** On-demand from Domain Provisioner (infra ready)
-- **Steps:** generate_architecture (Claude Opus) → generate_code (Claude Sonnet, iterative) → push_to_github → deploy_vercel → run_lighthouse → generate_docs → create_marketplace_integration → notify_agents
+- **Steps:** generate_architecture (Claude Opus) → generate_code (Claude Sonnet, iterative) → push_to_github → deploy_vercel → run_lighthouse → generate_docs → create_marketplace_integration → **cascade_to_distribution** (IMMEDIATELY trigger Distribution Engine Lead Pipeline for this business) → notify_slack ("🚀 [Business Name] is LIVE at [domain]. Distribution Engine starting.")
 - **Critical:** Uses the template repo (Next.js + next-intl + Tailwind + Supabase Auth + Stripe + blog + referral system). Brand Kit applied. Bilingual from day 1.
 - **ONBOARDING (see §5 above):** NEVER show empty dashboard after signup. Pre-populate a sample project with AI. Max 3 signup fields. Aha moment in <2 minutes. Onboarding checklist with progress bar. SMS notifications for trades users.
 - **REVERSE TRIAL (see §4 above):** All new users get 14-day full premium access. Auto-downgrade to free tier after 14 days (Stripe handles via scheduled subscription change). Upgrade CTA shows what they're losing.
