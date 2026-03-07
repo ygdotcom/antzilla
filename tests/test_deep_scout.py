@@ -390,7 +390,13 @@ class TestGenerateGTMPlaybook:
             patch.object(agent, "check_budget", new_callable=AsyncMock, return_value="opus"),
             patch.object(agent, "log_execution", new_callable=AsyncMock),
             patch("src.agents.deep_scout.call_claude", new_callable=AsyncMock) as mock_claude,
+            patch("src.knowledge.SessionLocal") as mock_sl,
         ):
+            mock_db = AsyncMock()
+            mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_db.__aexit__ = AsyncMock(return_value=False)
+            mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=MagicMock(return_value=[])))
+            mock_sl.return_value = mock_db
             mock_claude.return_value = (full_response, 0.12)
             result = await agent.generate_gtm_playbook(ctx)
 

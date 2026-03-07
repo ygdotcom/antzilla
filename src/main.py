@@ -56,6 +56,7 @@ def main():
     from src.agents.devops_agent import register as register_devops
     from src.agents.budget_guardian import register as register_budget_guardian
     from src.agents.growth_hacker import register as register_growth
+    from src.agents.knowledge_agent import register as register_knowledge
 
     workflows = []
 
@@ -103,6 +104,7 @@ def main():
     workflows.extend([devops_health, devops_backup])
     workflows.append(register_budget_guardian(hatchet))
     workflows.append(register_growth(hatchet))
+    workflows.append(register_knowledge(hatchet))
 
     for wf in workflows:
         worker.register_workflow(wf)

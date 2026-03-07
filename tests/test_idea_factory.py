@@ -181,7 +181,13 @@ class TestFilterStep:
             patch.object(agent, "log_execution", new_callable=AsyncMock),
             patch("src.agents.idea_factory.call_claude", new_callable=AsyncMock) as mock_claude,
             patch("src.agents.idea_factory._check_canadian_gap", new_callable=AsyncMock) as mock_gap,
+            patch("src.knowledge.SessionLocal") as mock_sl,
         ):
+            mock_db = AsyncMock()
+            mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_db.__aexit__ = AsyncMock(return_value=False)
+            mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=MagicMock(return_value=[])))
+            mock_sl.return_value = mock_db
             mock_claude.return_value = (sample_ideas_json, 0.02)
             mock_gap.return_value = {
                 "idea": "test",

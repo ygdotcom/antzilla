@@ -32,6 +32,7 @@ OUTREACH_SYSTEM_PROMPT = """\
 Tu génères un cold email personnalisé pour un prospect B2B au Canada.
 
 Tu reçois: le profil du lead, la value proposition, le ton, le framework de messaging.
+Tu reçois aussi des CONNAISSANCES ACCUMULÉES par la factory (templates gagnants, patterns prouvés). Utilise-les.
 
 RÈGLES 2026:
 - MOINS DE 80 mots. Pas de lien dans le premier email.
@@ -110,6 +111,15 @@ class OutreachAgent(BaseAgent):
 
             messaging = playbook.get("messaging", {})
             outreach_cfg = playbook.get("outreach", {})
+
+            # KNOWLEDGE-INFORMED: query winning email templates for this vertical
+            from src.knowledge import query_knowledge, format_knowledge_for_prompt
+            email_knowledge = await query_knowledge(
+                category="email_template_winner",
+                vertical=biz.get("slug"),
+                limit=5,
+            )
+            knowledge_block = format_knowledge_for_prompt(email_knowledge)
             cadence = outreach_cfg.get("sequence_days", [0, 3, 7, 12])
             max_daily = outreach_cfg.get("max_daily_emails", 50)
 
@@ -148,7 +158,7 @@ class OutreachAgent(BaseAgent):
                     sig_data = json.loads(lead.signal_data) if isinstance(lead.signal_data, str) else lead.signal_data
                     signal_context = f"Signal: {lead.signal_type} — {json.dumps(sig_data)}"
 
-                user_prompt = json.dumps({
+                prompt_data = {
                     "lead": {
                         "name": lead.name,
                         "company": lead.company,
@@ -158,7 +168,10 @@ class OutreachAgent(BaseAgent):
                     "messaging": messaging,
                     "sequence_step": lead.sequence_step or 0,
                     "max_words": 80,
-                }, default=str)
+                }
+                if knowledge_block:
+                    prompt_data["winning_patterns"] = knowledge_block
+                user_prompt = json.dumps(prompt_data, default=str)
 
                 # Generate message
                 model_tier = await self.check_budget()

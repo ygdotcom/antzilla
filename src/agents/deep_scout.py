@@ -287,14 +287,28 @@ class DeepScout(BaseAgent):
         }
 
     async def generate_gtm_playbook(self, context) -> dict:
-        """Step 5: Synthesize all research into Scout Report + GTM Playbook via Claude Opus."""
+        """Step 5: Synthesize all research into Scout Report + GTM Playbook via Claude Opus.
+
+        KNOWLEDGE-INFORMED: queries factory_knowledge for relevant insights
+        before generating, so Business #5 benefits from Businesses #1-4.
+        """
+        from src.knowledge import query_knowledge, format_knowledge_for_prompt
+
         market = context.step_output("research_market")
         us_competitor = context.step_output("analyze_us_competitor")
         channels = context.step_output("discover_channels")
         regulations = context.step_output("research_regulations")
 
+        niche = market.get("niche", "")
+
+        # Query accumulated knowledge for this vertical
+        prior_knowledge = await query_knowledge(vertical=niche, limit=20)
+        knowledge_block = format_knowledge_for_prompt(prior_knowledge)
+
         model_tier = await self.check_budget()
         system_prompt = _load_prompt()
+        if knowledge_block:
+            system_prompt += f"\n\n{knowledge_block}"
 
         research_payload = {
             "idea": market.get("idea_data", {}),
@@ -315,6 +329,7 @@ class DeepScout(BaseAgent):
                 "ecosystems": channels.get("ecosystem_search", ""),
             },
             "regulations": regulations,
+            "prior_knowledge_count": len(prior_knowledge),
         }
 
         user_payload = json.dumps(research_payload, default=str)[:60_000]

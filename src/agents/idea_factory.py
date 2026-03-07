@@ -173,10 +173,22 @@ class IdeaFactory(BaseAgent):
         return {"scraped_data": results, "sources_ok": len(successful)}
 
     async def filter_canadian_gap(self, context) -> dict:
-        """Step 2: Send scraped data to Claude to extract ideas, then verify CA gap."""
+        """Step 2: Send scraped data to Claude to extract ideas, then verify CA gap.
+
+        KNOWLEDGE-INFORMED: includes scoring calibrations from past businesses
+        so the factory gets better at predicting which ideas will succeed.
+        """
+        from src.knowledge import query_knowledge, format_knowledge_for_prompt
+
         scraped = context.step_output("scrape_sources")
         model_tier = await self.check_budget()
         system_prompt = _load_prompt()
+
+        # Inject past scoring calibrations into the prompt
+        calibrations = await query_knowledge(category="idea_scoring_calibration", limit=5)
+        cal_block = format_knowledge_for_prompt(calibrations)
+        if cal_block:
+            system_prompt += f"\n\n{cal_block}"
 
         scraped_summary = json.dumps(scraped["scraped_data"], default=str)[:30_000]
 

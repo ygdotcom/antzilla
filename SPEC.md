@@ -31,7 +31,13 @@ These learnings come from analyzing 1,200+ failed micro-SaaS businesses and prod
 - Support Agent (RAG)
 
 **WAVE 3 (Month 2+, after 10+ customers) — Optimize:**
-- All remaining agents: Referral, Nurture, Upsell, Onboarding, Social Proof, Competitor Watch, Growth Hacker, Self-Reflection, Legal Guardrail, i18n, DevOps, Budget Guardian
+- All remaining agents: Referral, Nurture, Upsell, Onboarding, Social Proof, Competitor Watch, Growth Hacker, Self-Reflection, Legal Guardrail, i18n, DevOps, Budget Guardian, Knowledge Agent, Quality Gate
+- Cross-cutting systems: Teardown Workflow, Product Iteration Loop, Cash Flow Tracker, Backup Restore Test, Brand Reputation Monitor
+
+**EXCEPTION — deploy these EARLIER than Wave 3:**
+- **Quality Gate (Agent 29):** deploy in Wave 1. It GATES outreach and deploys — without it, bad emails go out and buggy code goes live. Non-negotiable from day 1.
+- **Knowledge Agent (Agent 28):** deploy in Wave 2. Start accumulating learnings as soon as the first business has data. By Business #2, the factory should already be smarter.
+- **Human Touchpoint (System A):** deploy in Wave 1. The first 5 customers of each business get routed to you via Slack, not to Voice Agent.
 
 **Why:** Every agent you build before having customers is waste. The Sales agent and Builder are 10x more important than the Self-Reflection agent on day 1. Get revenue first, optimize later.
 
@@ -382,8 +388,10 @@ factory/
 │   │   ├── legal_guardrail.py     # Agent 23: Compliance scanning
 │   │   ├── devops_agent.py        # Agent 24: Health checks & backups (bonus)
 │   │   ├── budget_guardian.py     # Agent 25: API cost tracking & throttling (bonus)
-│   │   ├── voice_agent.py         # Agent 26: AI cold calling & voice support (Retell/Vapi)
-│   │   └── growth_hacker.py       # Agent 27: Unconventional acquisition tactics
+│   │   ├── voice_agent.py         # Agent 26: AI voice (warm calls only, Retell + Twilio)
+│   │   ├── growth_hacker.py       # Agent 27: Unconventional acquisition tactics
+│   │   ├── knowledge_agent.py     # Agent 28: Cross-business learning & knowledge accumulation
+│   │   └── quality_gate.py        # Agent 29: Quality review gate (blocks bad emails, deploys, posts)
 │   │   # NOTE: Agent 28 (GEO/LLM Optimizer) is part of the Content Engine, not a separate file.
 │   │   # Its logic lives in content_engine.py as additional steps.
 │   ├── dashboard/
@@ -965,6 +973,79 @@ CREATE TABLE glossary (
     UNIQUE(business_id, term_en)
 );
 
+-- ═══ LEARNING & KNOWLEDGE (Agent 28 — the factory's long-term memory) ═══
+
+CREATE TABLE factory_knowledge (
+    id SERIAL PRIMARY KEY,
+    category TEXT NOT NULL CHECK (category IN (
+        'email_template_winner',
+        'channel_effectiveness',
+        'idea_scoring_calibration',
+        'objection_response',
+        'icp_insight',
+        'pricing_insight',
+        'content_format_winner',
+        'onboarding_pattern',
+        'churn_reason',
+        'referral_tactic'
+    )),
+    vertical TEXT,                    -- 'trades', 'professional_services', 'ecommerce', etc. NULL = universal
+    insight TEXT NOT NULL,            -- Human-readable insight
+    data JSONB NOT NULL,             -- Structured data backing the insight
+    confidence FLOAT DEFAULT 0.5,    -- 0-1, increases with more corroborating data
+    times_applied INT DEFAULT 0,     -- How many times this knowledge was used
+    times_successful INT DEFAULT 0,  -- How many times it led to a positive outcome
+    source_business_id INT REFERENCES businesses(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══ PRODUCT ITERATION ═══
+
+CREATE TABLE feature_requests (
+    id SERIAL PRIMARY KEY,
+    business_id INT REFERENCES businesses(id),
+    title TEXT NOT NULL,
+    description TEXT,
+    requested_by_customers INT DEFAULT 1,   -- Count of customers who asked for this
+    customer_ids INT[],                      -- Which customers requested it
+    priority_score FLOAT,                    -- Calculated: requesters × paying_weight × effort_inverse
+    status TEXT DEFAULT 'new' CHECK (status IN ('new','prioritized','in_progress','pr_created','merged','rejected')),
+    github_pr_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══ BRAND MONITORING ═══
+
+CREATE TABLE brand_mentions (
+    id SERIAL PRIMARY KEY,
+    business_id INT REFERENCES businesses(id),
+    platform TEXT NOT NULL,           -- 'reddit', 'facebook', 'google', 'linkedin', 'twitter'
+    source_url TEXT,
+    mention_text TEXT,
+    sentiment FLOAT,                  -- 0-1 (0 = very negative, 1 = very positive)
+    is_negative BOOLEAN DEFAULT FALSE,
+    action_taken TEXT,                -- 'paused_social', 'responded', 'ignored'
+    detected_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══ CASH FLOW ═══
+
+CREATE TABLE cash_flow (
+    id SERIAL PRIMARY KEY,
+    business_id INT REFERENCES businesses(id),  -- NULL = factory-level expense
+    category TEXT NOT NULL CHECK (category IN (
+        'domain_purchase', 'instantly_subscription', 'ad_spend', 'twilio',
+        'retell', 'claude_api', 'vercel', 'supabase', 'other_expense',
+        'subscription_revenue', 'other_revenue'
+    )),
+    amount_cad NUMERIC(10,2) NOT NULL,  -- Positive = revenue, negative = expense
+    description TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ═══ INDEXES ═══
 CREATE INDEX idx_ideas_status ON ideas(status);
 CREATE INDEX idx_businesses_status ON businesses(status);
@@ -980,6 +1061,14 @@ CREATE INDEX idx_voice_calls_business ON voice_calls(business_id, status, create
 CREATE INDEX idx_voice_calls_lead ON voice_calls(lead_id, created_at DESC);
 CREATE INDEX idx_dncl_cache_phone ON dncl_cache(phone_number);
 CREATE INDEX idx_dncl_cache_expiry ON dncl_cache(expires_at);
+CREATE INDEX idx_knowledge_category ON factory_knowledge(category, vertical, confidence DESC);
+CREATE INDEX idx_knowledge_vertical ON factory_knowledge(vertical, created_at DESC);
+CREATE INDEX idx_feature_requests_business ON feature_requests(business_id, status, priority_score DESC);
+CREATE INDEX idx_brand_mentions_business ON brand_mentions(business_id, is_negative, detected_at DESC);
+CREATE INDEX idx_cash_flow_business ON cash_flow(business_id, date DESC);
+CREATE INDEX idx_cash_flow_date ON cash_flow(date, category);
+CREATE INDEX idx_signals_business ON signals(business_id, signal_type, actioned);
+CREATE INDEX idx_outreach_experiments_business ON outreach_experiments(business_id, winner);
 ```
 
 ---
@@ -2220,6 +2309,127 @@ COMPLIANCE OPS:
 
 ---
 
+#### Agent 28: KNOWLEDGE AGENT (`knowledge_agent.py`)
+
+**Trigger:** Weekly Sunday 4AM + after every A/B test concludes + after every business kill/milestone
+**Claude model:** claude-opus-4-20250514 (needs cross-pattern reasoning)
+**Purpose:** The factory's long-term memory. Without this agent, Business #5 is no smarter than Business #1. With it, every failure teaches and every success compounds.
+
+**Steps DAG:**
+1. `scan_outreach_experiments` — Find all concluded A/B tests across ALL businesses. Extract winning patterns (subject line formulas, opening hooks, CTAs that convert). Store as `email_template_winner` in `factory_knowledge` with the vertical tag.
+2. `scan_channel_performance` — Compare CAC by channel by vertical across all businesses. Store as `channel_effectiveness`. Example: "For trades in QC, Facebook Groups has 3x lower CAC than cold email."
+3. `calibrate_idea_scoring` — Compare original Idea Factory scores vs actual business outcomes (MRR at 90 days). If ideas scored 8+ consistently underperform, calculate scoring weight adjustments. Store as `idea_scoring_calibration`.
+4. `extract_objection_patterns` — Scan Reply Handler logs for objection→response pairs where the response led to conversion. Store as `objection_response`.
+5. `extract_churn_reasons` — Scan churned customers' last support tickets + cancellation reasons. Cluster into patterns. Store as `churn_reason`.
+6. `extract_onboarding_insights` — Compare activation rates across businesses. Which onboarding patterns correlate with higher trial-to-paid conversion? Store as `onboarding_pattern`.
+7. `synthesize_meta_patterns` — Send all new insights to Claude Opus: "Given these insights from N businesses, what meta-patterns emerge? What should the factory do differently?" Store synthesis as universal insights (vertical=NULL).
+
+**Consumers of factory_knowledge (these agents query it BEFORE acting):**
+- **Deep Scout** → before generating GTM Playbook, loads relevant insights: "Based on previous businesses, here's what we've learned about [vertical]..."
+- **Outreach Agent** → before generating cold emails for a new business, loads winning email templates from same vertical as starting point
+- **Idea Factory** → before scoring, loads idea_scoring_calibration to adjust scoring weights
+- **Reply Handler** → when handling objections, loads past winning objection responses
+- **Builder** → when designing onboarding, loads onboarding_pattern insights
+- **Content Engine** → loads content_format_winner insights (which formats drive signups)
+
+#### Agent 29: QUALITY GATE (`quality_gate.py`)
+
+**Trigger:** Before every batch outreach send + before every Builder deployment + before every social post batch
+**Claude model:** claude-sonnet-4-20250514
+**Purpose:** Prevents "silent failure at scale" — the #1 risk for autonomous systems. If the Outreach Agent sends 500 slightly-off emails, it destroys domain reputation for weeks. If the Builder deploys code with exposed API keys, it's a security breach.
+
+**Steps:**
+1. `review_outreach_batch` — Before any email batch is sent, sample 3 random messages. Claude rates each 1-10 on: natural tone, no AI-sounding phrases, correct québécois French (if FR), CASL compliance, relevance to ICP. If ANY score < 6 → block batch, alert Slack, route to human review.
+2. `review_builder_deploy` — Before any deploy to Vercel: scan code for exposed API keys/secrets in frontend files, verify RLS enabled on all Supabase tables (regex-parse migrations for `ENABLE ROW LEVEL SECURITY`), check for hardcoded passwords, verify HTTPS-only API calls. If critical issues found → block deploy, alert Slack.
+3. `review_social_posts` — Before social posts are published, check: no overtly promotional language, no banned phrases for the platform, correct language for target community. If off-brand → block and revise.
+
+**This agent is a GATE, not a logger.** It blocks actions, it doesn't just report after the fact.
+
+---
+
+### CROSS-CUTTING SYSTEMS (applied across multiple agents)
+
+#### System A: HUMAN TOUCHPOINT FOR HOT LEADS
+
+**Applied to:** Distribution Engine Reply Handler
+**Rule:** When a lead's status changes to `replied_positive` AND their lead score ≥ 80, INSTEAD of auto-routing to Voice Agent:
+- Send Slack notification: "🔥 Hot lead: [Name] from [Company] replied: '[first 100 chars of reply]'. Call them personally or let Voice Agent handle?" with two action buttons.
+- For the **first 5 customers of each business**, ALWAYS route to Slack for human follow-up. No exceptions. The factory cannot close its first customers alone — trades people need to talk to a human before trusting an unknown tool with their money.
+- After 5 paying customers per business, Voice Agent handles autonomously.
+
+#### System B: BRAND REPUTATION MONITOR
+
+**Applied to:** Social Agent
+**Implementation:** After every post/comment, and continuously via Syften monitoring:
+- Track all mentions of each business brand name across Reddit, Facebook, Google, LinkedIn
+- Claude classifies sentiment of each mention (0-1 scale)
+- If negative mention detected (sentiment < 0.3): IMMEDIATELY pause all social activity for that business in that community, alert Slack with the mention text and source URL
+- Log in `brand_mentions` table for trend analysis
+- Auto-resume after human reviews and approves
+
+#### System C: TEARDOWN WORKFLOW
+
+**Applied to:** Analytics & Kill Agent
+**Trigger:** When a business is killed (via Dashboard Kill button or auto-kill from kill score < 30 after 8 weeks)
+**Steps:**
+1. Cancel Instantly warmup and campaigns for this business's domains
+2. Remove Vercel project (or just remove the custom domain, archive the deployment)
+3. Archive GitHub repo (don't delete — keep for reference)
+4. Archive Stripe products (don't delete — keep for refund handling)
+5. Release Twilio phone number
+6. Remove Cloudflare DNS records for business domains
+7. Mark all active leads as `status='business_killed'`
+8. Calculate total invested vs total revenue for post-mortem
+9. Feed post-mortem data to Knowledge Agent for learning
+10. Log everything to `agent_logs` for cost accounting
+11. Notify Slack: "💀 [Business] killed. Total invested: $X. Total revenue: $Y. Post-mortem saved."
+
+#### System D: PRODUCT ITERATION LOOP
+
+**Applied to:** Support Agent + Builder
+**Implementation:**
+- Support Agent: when feature requests accumulate (3+ customers asking for the same thing), create entry in `feature_requests` table with priority score based on: number of requesters, are they paying customers, estimated effort, alignment with product vision
+- Builder Agent (weekly cron, Saturday): check `feature_requests` for top-priority items. For each:
+  - Generate the code update
+  - Create a GitHub Pull Request (NOT direct push to main)
+  - Notify Slack: "🔧 Feature PR ready: [title]. [N] customers requested this. Review: [PR link]"
+  - Human merges → Vercel auto-deploys
+- This is how businesses improve after v1. Without it, the factory builds but never iterates.
+
+#### System E: CASH FLOW TRACKER
+
+**Applied to:** Budget Guardian
+**Implementation:** Track not just API costs but ALL expenses per business:
+- Domain purchases (one-time)
+- Instantly subscription (monthly, pro-rated per business)
+- Ad spend for validation ($150 per idea tested)
+- Twilio phone numbers ($1.50/mo each)
+- Retell AI call costs ($0.07/min)
+- Claude API costs (from agent_logs)
+- Vercel/Supabase if on paid tiers
+
+**Dashboard additions (/budget page):**
+- Total invested per business vs total revenue
+- Months to breakeven at current MRR growth rate
+- Total factory monthly burn rate
+- Factory runway at current burn (alert if < 3 months)
+- Historical cost-per-customer-acquired trend
+
+#### System F: BACKUP RESTORE TEST
+
+**Applied to:** DevOps Agent
+**Monthly automated test:**
+1. pg_dump current database to temp file
+2. Create temporary database `factory_restore_test`
+3. pg_restore into temp database
+4. Run health check queries: count rows in key tables, verify FK integrity, check latest timestamps
+5. Compare row counts against production
+6. Drop temp database
+7. Log results to agent_logs
+8. If restore fails → CRITICAL alert to Slack
+
+---
+
 ## CEO DASHBOARD (`src/dashboard/`)
 
 The dashboard is your ONLY interface with the factory. Everything else is autonomous. If you can't see it on the dashboard, it doesn't exist.
@@ -2434,6 +2644,21 @@ settings = Settings()
 - Click into any idea → read full Scout Report
 - Quick actions: "Send to Scout", "Send to Validator", "Archive"
 
+**8. KNOWLEDGE (`/knowledge`)**
+- All accumulated insights from Knowledge Agent, grouped by category
+- Confidence scores and usage stats (times_applied, times_successful)
+- "Top 10 things the factory has learned" auto-generated summary
+- Filter by vertical, by category, by confidence level
+- Manually add insights: "I talked to 3 roofers and they all said X" (insert into factory_knowledge with source='human')
+- Mark insights as outdated/wrong (set confidence to 0)
+
+**9. FEATURE REQUESTS (`/features`)**
+- All feature requests across businesses, sorted by priority
+- Number of customers requesting each feature
+- Status: new → prioritized → PR created → merged
+- Link to GitHub PR when available
+- Approve/reject buttons
+
 ### Dashboard Data Sources:
 All data comes from Postgres tables. The dashboard does NOT call external APIs — it reads the data that agents have already written:
 - `daily_snapshots` → charts and trends
@@ -2443,11 +2668,15 @@ All data comes from Postgres tables. The dashboard does NOT call external APIs �
 - `agent_logs` → agent performance
 - `improvements` → self-reflection proposals
 - `voice_calls` → voice stats
-- `budget_tracking` → cost data
+- `budget_tracking` + `cash_flow` → cost data and runway
 - `content` → content performance
 - `support_tickets` → support volume
 - `ideas` → idea pipeline
 - `secrets` → settings page (API keys, connection status)
+- `factory_knowledge` → knowledge page
+- `feature_requests` → feature requests page
+- `brand_mentions` → brand reputation monitoring
+- `outreach_experiments` → A/B test results
 
 ### Dashboard Controls write to:
 - `businesses.config` → budget allocation, volume limits, pause state
@@ -2746,38 +2975,43 @@ Build similar thin wrappers for: Cloudflare, Vercel, GitHub, Supabase, Stripe, S
 
 ## WHAT TO BUILD FIRST (priority order — see CRITICAL DESIGN CHANGES §1 above)
 
-**The #1 rule: DO NOT build all 27 agents before you have a paying customer.**
+**The #1 rule: DO NOT build all 29 agents before you have a paying customer.**
 
-### WAVE 1 — Ship & Sell (Days 1-10). Only these 7 agents + infra:
+### WAVE 1 — Ship & Sell (Days 1-10). Only these agents + infra:
 1. `docker-compose.yml` + `main.py` + `db.py` + `config.py` + `llm.py` + `base_agent.py` (with budget circuit breaker) — Get Hatchet + Postgres running
-2. `outbound_sales.py` + `instantly_client.py` — THE most important agent. Revenue depends on this. Build first, test immediately. Use secondary sending domains. Follow 2026 cold email rules (§6 above).
-3. `idea_factory.py` + `deep_scout.py` — Discovery pipeline (can run in parallel with building sales)
-4. `brand_designer.py` (light mode only) + `domain_provisioner.py` — Just enough to get a name, domain, and infra
-5. `builder.py` — Code the MVP. Pre-populated onboarding (§5). Reverse trial (§4). Flat-rate CAD pricing (§8). RLS enabled on every table (§12). Include llms.txt + schema.org from day 1.
-6. `meta_orchestrator.py` — Coordinate the above
-7. `analytics_agent.py` — Kill score, metrics, Slack reports. Track dev costs for SR&ED (§11).
-8. `src/dashboard/` — Simple version first: overview + per-business controls + budget view
+2. `quality_gate.py` — Build BEFORE outreach. Gates bad emails and deploys. Non-negotiable from day 1.
+3. `distribution/` (all 5 sub-agents) + `instantly_client.py` — THE revenue engine. Build and test immediately. Use secondary sending domains. Follow 2026 cold email rules (§6).
+4. `idea_factory.py` + `deep_scout.py` — Discovery pipeline (can run in parallel with building sales)
+5. `brand_designer.py` (light mode only) + `domain_provisioner.py` — Just enough to get a name, domain, and infra
+6. `builder.py` — Code the MVP. Pre-populated onboarding (§5). Reverse trial (§4). Flat-rate CAD pricing (§8). RLS enabled on every table (§12). Include llms.txt + schema.org from day 1.
+7. `meta_orchestrator.py` — Coordinate the above (event-driven cascade + daily oversight)
+8. `analytics_agent.py` — Kill score, metrics, Slack reports. Track dev costs for SR&ED (§11).
+9. `src/dashboard/` — Including Setup Wizard, Settings, overview, per-business controls, budget, outreach approval queue
+10. Human Touchpoint system (System A) — first 5 customers per business route to Slack, not Voice Agent
 
-**MILESTONE: First cold emails sent. First paying customer.**
+**MILESTONE: First cold emails sent (quality-gated). First paying customer (human-closed).**
 
 ### WAVE 2 — Grow (Week 3-4, after first customer):
-9. `content_engine.py` + GEO optimization — SEO + LLM citations. Compounds over time, start ASAP.
-10. `social_agent.py` — Reddit + LinkedIn organic
-11. `voice_agent.py` + `retell_client.py` + `twilio_client.py` + `dncl_client.py` — WARM CALLS ONLY (see §2). Only call leads who replied to email or signed up.
-12. `billing_agent.py` — Dunning, Smart Retries, Card Updater, pre-expiry reminders (§7)
-13. `support_agent.py` — RAG knowledge base
-14. `fulfillment.py` — Per-business service delivery
-15. `growth_hacker.py` — Marketplace listings, ecosystem integrations, template bait, trigger-based outreach
+11. `content_engine.py` + GEO optimization — SEO + LLM citations + programmatic SEO pages
+12. `social_agent.py` — Reddit + LinkedIn organic + Brand Reputation Monitor (System B)
+13. `voice_agent.py` + `retell_client.py` + `twilio_client.py` + `dncl_client.py` — WARM CALLS ONLY (see §2)
+14. `billing_agent.py` — Dunning, Smart Retries, Card Updater, pre-expiry reminders (§7)
+15. `support_agent.py` — RAG knowledge base
+16. `fulfillment.py` — Per-business service delivery
+17. `growth_hacker.py` — Marketplace listings, ecosystem integrations, template bait, trigger-based outreach
+18. `knowledge_agent.py` — Start accumulating learnings NOW so Business #2 is smarter than Business #1
+19. Cash Flow Tracker (System E) — integrated into Budget Guardian
 
-**MILESTONE: 10+ customers. Multiple acquisition channels working.**
+**MILESTONE: 10+ customers. Multiple acquisition channels working. Knowledge accumulating.**
 
 ### WAVE 3 — Optimize (Month 2+, after 10+ customers):
-16. `self_reflection.py` — Meta-cognition (now there's enough data to analyze)
-17. `referral_agent.py` + `email_nurture.py` + `upsell_agent.py` — Revenue expansion
-18. `onboarding_agent.py` + `social_proof.py` — Improve activation & conversion
-19. `competitor_watch.py` + `legal_guardrail.py` + `i18n_agent.py` — Monitoring & quality
-20. `devops_agent.py` + `budget_guardian.py` — Infrastructure hardening
-21. Dashboard v2: full controls, all metrics, agent performance
+20. `self_reflection.py` — Meta-cognition (now there's enough data to analyze)
+21. `referral_agent.py` + `email_nurture.py` + `upsell_agent.py` — Revenue expansion
+22. `onboarding_agent.py` + `social_proof.py` — Improve activation & conversion
+23. `competitor_watch.py` + `legal_guardrail.py` + `i18n_agent.py` — Monitoring & quality
+24. `devops_agent.py` + `budget_guardian.py` — Infrastructure hardening + Backup Restore Test (System F)
+25. Teardown Workflow (System C) + Product Iteration Loop (System D)
+26. Dashboard v2: full controls, all metrics, knowledge page, feature requests page
 
 **MILESTONE: 3+ businesses live. Factory running autonomously.**
 

@@ -413,6 +413,33 @@ CREATE TABLE secrets (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ═══ FACTORY KNOWLEDGE (cross-business learning — the factory's long-term memory) ═══
+
+CREATE TABLE factory_knowledge (
+    id SERIAL PRIMARY KEY,
+    category TEXT NOT NULL CHECK (category IN (
+        'email_template_winner',
+        'channel_effectiveness',
+        'idea_scoring_calibration',
+        'objection_response',
+        'icp_insight',
+        'pricing_insight',
+        'content_format_winner',
+        'onboarding_pattern',
+        'churn_reason',
+        'referral_tactic'
+    )),
+    vertical TEXT,
+    insight TEXT NOT NULL,
+    data JSONB NOT NULL,
+    confidence FLOAT DEFAULT 0.5,
+    times_applied INT DEFAULT 0,
+    times_successful INT DEFAULT 0,
+    source_business_id INT REFERENCES businesses(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ═══ INDEXES ═══
 CREATE INDEX idx_ideas_status ON ideas(status);
 CREATE INDEX idx_businesses_status ON businesses(status);
@@ -434,3 +461,5 @@ CREATE INDEX idx_signals_business ON signals(business_id, signal_type);
 CREATE INDEX idx_signals_lead ON signals(lead_id);
 CREATE INDEX idx_gtm_playbooks_business ON gtm_playbooks(business_id);
 CREATE INDEX idx_outreach_experiments_business ON outreach_experiments(business_id);
+CREATE INDEX idx_factory_knowledge_category ON factory_knowledge(category, vertical);
+CREATE INDEX idx_factory_knowledge_confidence ON factory_knowledge(confidence DESC);

@@ -181,10 +181,18 @@ class ReplyHandler(BaseAgent):
             if not reply_text:
                 continue
 
+            # KNOWLEDGE-INFORMED: include past winning objection responses
+            from src.knowledge import query_knowledge, format_knowledge_for_prompt
+            objection_knowledge = await query_knowledge(category="objection_response", limit=5)
+            enhanced_prompt = CLASSIFICATION_PROMPT
+            obj_block = format_knowledge_for_prompt(objection_knowledge)
+            if obj_block:
+                enhanced_prompt += f"\n\n{obj_block}"
+
             model_tier = await self.check_budget()
             response, cost = await call_claude(
                 model_tier=model_tier,
-                system=CLASSIFICATION_PROMPT,
+                system=enhanced_prompt,
                 user=f"Lead: {lead.name} ({lead.company})\n\nReply:\n{reply_text}",
                 max_tokens=256,
                 temperature=0.1,
@@ -225,6 +233,21 @@ class ReplyHandler(BaseAgent):
                     classifications["objection"] += 1
                 else:
                     classifications["other"] = classifications.get("other", 0) + 1
+
+            # Store winning objection→conversion patterns in factory knowledge
+            if cat == "positive_interested" and reply_text:
+                from src.knowledge import store_knowledge
+                try:
+                    await store_knowledge(
+                        category="objection_response",
+                        vertical=None,
+                        insight=f"Lead '{lead.name}' converted after: {reply_text[:100]}",
+                        data={"reply_excerpt": reply_text[:500], "lead_score": lead.score},
+                        confidence=0.5,
+                        source_business_id=lead.business_id,
+                    )
+                except Exception:
+                    pass
 
             processed += 1
             await self.log_execution(

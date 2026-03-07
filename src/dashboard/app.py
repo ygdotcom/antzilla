@@ -45,7 +45,7 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SetupRedirectMiddleware)
 
 # Import and include route modules
-from src.dashboard.routes import overview, businesses, agents, budget, decisions, ideas, leads, secrets_api
+from src.dashboard.routes import overview, businesses, agents, budget, decisions, ideas, knowledge, leads, secrets_api
 
 app.include_router(overview.router)
 app.include_router(businesses.router)
@@ -53,6 +53,7 @@ app.include_router(agents.router)
 app.include_router(budget.router)
 app.include_router(decisions.router)
 app.include_router(ideas.router)
+app.include_router(knowledge.router)
 app.include_router(leads.router)
 app.include_router(secrets_api.router)
 
