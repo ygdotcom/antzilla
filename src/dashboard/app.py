@@ -96,58 +96,95 @@ app.include_router(leads.router)
 app.include_router(secrets_api.router)
 
 
+AGENT_RUNNERS = {
+    "idea-factory": ("src.agents.idea_factory", "IdeaFactory", [
+        "scrape_sources", "filter_canadian_gap", "score_ideas", "save_and_notify"
+    ]),
+    "self-reflection": ("src.agents.self_reflection", "SelfReflectionAgent", [
+        "gather_data", "analyze", "categorize_findings", "save_improvements", "send_report"
+    ]),
+}
+
+
 @app.post("/trigger/{workflow_name}", response_class=HTMLResponse)
 async def trigger_workflow(request: Request, workflow_name: str, user: str = Depends(verify_credentials)):
-    """Trigger a workflow via Hatchet SDK, with DB fallback."""
-    import os
+    """Run an agent directly — no Hatchet, no queue, instant execution."""
+    import asyncio
+    import importlib
     from sqlalchemy import text as sa_text
     from src.db import SessionLocal
     current = get_current_user(request)
     triggered_by = current.get("username", "unknown") if current else "unknown"
 
-    # Try Hatchet SDK direct trigger
-    hatchet_token = os.environ.get("HATCHET_CLIENT_TOKEN", "")
-    if hatchet_token and len(hatchet_token) > 20:
-        try:
-            from hatchet_sdk import Hatchet
-            h = Hatchet()
-            wf = h.workflows.get(workflow_name)
-            if wf:
-                await wf.aio_run_no_wait({})
-                # Log the trigger
-                async with SessionLocal() as db:
-                    await db.execute(
-                        sa_text(
-                            "INSERT INTO workflow_triggers (workflow_name, status, triggered_by) "
-                            "VALUES (:wf, 'running', :user)"
-                        ),
-                        {"wf": workflow_name, "user": triggered_by},
-                    )
-                    await db.commit()
-                return HTMLResponse(
-                    f'<span class="text-brand text-sm font-medium">Running {workflow_name}</span>'
-                )
-        except Exception as exc:
-            logger.warning("hatchet_trigger_failed", workflow=workflow_name, error=str(exc))
+    runner = AGENT_RUNNERS.get(workflow_name)
+    if not runner:
+        return HTMLResponse(
+            f'<span class="text-yellow-400 text-sm">No instant runner for {workflow_name} — runs on schedule</span>'
+        )
 
-    # Fallback: queue in DB
-    try:
-        async with SessionLocal() as db:
-            await db.execute(
-                sa_text(
-                    "INSERT INTO workflow_triggers (workflow_name, triggered_by) "
-                    "VALUES (:wf, :user)"
-                ),
-                {"wf": workflow_name, "user": triggered_by},
-            )
-            await db.commit()
-        return HTMLResponse(
-            f'<span class="text-yellow-400 text-sm font-medium">Queued {workflow_name} (will run on next schedule)</span>'
+    module_path, class_name, steps = runner
+
+    # Log the trigger
+    async with SessionLocal() as db:
+        await db.execute(
+            sa_text(
+                "INSERT INTO workflow_triggers (workflow_name, status, triggered_by) "
+                "VALUES (:wf, 'running', :user)"
+            ),
+            {"wf": workflow_name, "user": triggered_by},
         )
-    except Exception as exc:
-        return HTMLResponse(
-            f'<span class="text-red-400 text-sm">Failed: {exc}</span>'
-        )
+        await db.commit()
+
+    # Run agent in background so the button responds immediately
+    async def _run_agent():
+        try:
+            mod = importlib.import_module(module_path)
+            agent_class = getattr(mod, class_name)
+            agent = agent_class()
+
+            class FakeContext:
+                def __init__(self):
+                    self._outputs = {}
+                def step_output(self, name):
+                    return self._outputs.get(name, {})
+                def workflow_input(self):
+                    return {}
+
+            ctx = FakeContext()
+            for step_name in steps:
+                method = getattr(agent, step_name)
+                result = await method(ctx)
+                ctx._outputs[step_name] = result if isinstance(result, dict) else {}
+                logger.info("agent_step_complete", agent=workflow_name, step=step_name)
+
+            async with SessionLocal() as db:
+                await db.execute(
+                    sa_text(
+                        "UPDATE workflow_triggers SET status = 'completed', completed_at = NOW() "
+                        "WHERE workflow_name = :wf AND status = 'running' "
+                        "ORDER BY created_at DESC LIMIT 1"
+                    ),
+                    {"wf": workflow_name},
+                )
+                await db.commit()
+        except Exception as exc:
+            logger.error("agent_run_failed", agent=workflow_name, error=str(exc))
+            async with SessionLocal() as db:
+                await db.execute(
+                    sa_text(
+                        "UPDATE workflow_triggers SET status = 'failed', completed_at = NOW() "
+                        "WHERE workflow_name = :wf AND status = 'running' "
+                        "ORDER BY created_at DESC LIMIT 1"
+                    ),
+                    {"wf": workflow_name},
+                )
+                await db.commit()
+
+    asyncio.create_task(_run_agent())
+
+    return HTMLResponse(
+        f'<span class="text-brand text-sm font-medium animate-pulse">Running {workflow_name}... check Console</span>'
+    )
 
 
 @app.get("/businesses", response_class=HTMLResponse)
