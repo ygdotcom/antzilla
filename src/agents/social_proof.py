@@ -345,29 +345,29 @@ class SocialProof(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="social-proof", timeout="15m")
+    @hatchet_instance.workflow(name="social-proof")
     class _Registered(SocialProof):
-        @hatchet_instance.step(timeout="5m", retries=1)
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def find_candidates(self, context: Context) -> dict:
             return await SocialProof.find_candidates(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["find_candidates"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def send_testimonial_request(self, context: Context) -> dict:
             return await SocialProof.send_testimonial_request(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=1, parents=["find_candidates"])
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def collect_response(self, context: Context) -> dict:
             return await SocialProof.collect_response(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["collect_response"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def publish_to_site(self, context: Context) -> dict:
             return await SocialProof.publish_to_site(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=1, parents=["collect_response"])
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def request_external_review(self, context: Context) -> dict:
             return await SocialProof.request_external_review(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=1, parents=["publish_to_site", "request_external_review"])
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def update_aggregate_metrics(self, context: Context) -> dict:
             return await SocialProof.update_aggregate_metrics(self, context)
 

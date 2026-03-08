@@ -255,25 +255,25 @@ class KnowledgeAgent(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="knowledge-agent", on_crons=["0 9 * * 0"], timeout="30m")
+    @hatchet_instance.workflow(name="knowledge-agent", on_crons=["0 9 * * 0"])
     class _Registered(KnowledgeAgent):
-        @hatchet_instance.step(timeout="5m", retries=1)
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def scan_outreach_experiments(self, context: Context) -> dict:
             return await KnowledgeAgent.scan_outreach_experiments(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["scan_outreach_experiments"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def scan_channel_performance(self, context: Context) -> dict:
             return await KnowledgeAgent.scan_channel_performance(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["scan_channel_performance"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def calibrate_idea_scoring(self, context: Context) -> dict:
             return await KnowledgeAgent.calibrate_idea_scoring(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["calibrate_idea_scoring"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def extract_churn_reasons(self, context: Context) -> dict:
             return await KnowledgeAgent.extract_churn_reasons(self, context)
 
-        @hatchet_instance.step(timeout="10m", retries=1, parents=["extract_churn_reasons"])
+        @hatchet_instance.task(execution_timeout="10m", retries=1)
         async def synthesize_with_claude(self, context: Context) -> dict:
             return await KnowledgeAgent.synthesize_with_claude(self, context)
 

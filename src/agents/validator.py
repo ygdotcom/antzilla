@@ -254,33 +254,33 @@ class Validator(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="validator", timeout="30m")
+    @hatchet_instance.workflow(name="validator")
     class _Registered(Validator):
-        @hatchet_instance.step(timeout="10m", retries=1)
+        @hatchet_instance.task(execution_timeout="10m", retries=1)
         async def request_light_brand(self, context: Context) -> dict:
             return await Validator.request_light_brand(self, context)
 
-        @hatchet_instance.step(timeout="10m", retries=1, parents=["request_light_brand"])
+        @hatchet_instance.task(execution_timeout="10m", retries=1)
         async def generate_landing_page(self, context: Context) -> dict:
             return await Validator.generate_landing_page(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["generate_landing_page"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def deploy_landing(self, context: Context) -> dict:
             return await Validator.deploy_landing(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["deploy_landing"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def launch_ads(self, context: Context) -> dict:
             return await Validator.launch_ads(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["launch_ads"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def monitor_daily(self, context: Context) -> dict:
             return await Validator.monitor_daily(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["monitor_daily"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def evaluate_results(self, context: Context) -> dict:
             return await Validator.evaluate_results(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["evaluate_results"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def report_to_meta(self, context: Context) -> dict:
             return await Validator.report_to_meta(self, context)
 

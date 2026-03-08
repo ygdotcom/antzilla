@@ -426,17 +426,17 @@ class ContentEngine(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="content-engine", on_crons=["0 12 * * 1,4"], timeout="45m")
+    @hatchet_instance.workflow(name="content-engine", on_crons=["0 12 * * 1,4"])
     class _Registered(ContentEngine):
-        @hatchet_instance.step(timeout="20m", retries=1)
+        @hatchet_instance.task(execution_timeout="20m", retries=1)
         async def editorial_content(self, context: Context) -> dict:
             return await ContentEngine.editorial_content(self, context)
 
-        @hatchet_instance.step(timeout="20m", retries=1, parents=["editorial_content"])
+        @hatchet_instance.task(execution_timeout="20m", retries=1)
         async def programmatic_seo(self, context: Context) -> dict:
             return await ContentEngine.programmatic_seo(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["programmatic_seo"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def regenerate_llms_txt(self, context: Context) -> dict:
             return await ContentEngine.regenerate_llms_txt(self, context)
 

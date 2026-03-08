@@ -519,67 +519,53 @@ def register(hatchet_instance) -> type:
     """Register DomainProvisioner as a Hatchet workflow."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="domain-provisioner", timeout="30m")
+    @hatchet_instance.workflow(name="domain-provisioner")
     class _Registered(DomainProvisioner):
-        @hatchet_instance.step(timeout="3m", retries=2)
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def buy_primary_domain(self, context: Context) -> dict:
             return await DomainProvisioner.buy_primary_domain(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def buy_cold_email_domains(self, context: Context) -> dict:
             return await DomainProvisioner.buy_cold_email_domains(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["buy_cold_email_domains"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def setup_dns_all_domains(self, context: Context) -> dict:
             return await DomainProvisioner.setup_dns_all_domains(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def create_vercel_project(self, context: Context) -> dict:
             return await DomainProvisioner.create_vercel_project(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def create_github_repo(self, context: Context) -> dict:
             return await DomainProvisioner.create_github_repo(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def create_supabase_project(self, context: Context) -> dict:
             return await DomainProvisioner.create_supabase_project(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def setup_stripe(self, context: Context) -> dict:
             return await DomainProvisioner.setup_stripe(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["setup_dns_all_domains"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def setup_resend(self, context: Context) -> dict:
             return await DomainProvisioner.setup_resend(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_cold_email_domains"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def setup_instantly(self, context: Context) -> dict:
             return await DomainProvisioner.setup_instantly(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def buy_twilio_number(self, context: Context) -> dict:
             return await DomainProvisioner.buy_twilio_number(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["buy_primary_domain"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def create_retell_agents(self, context: Context) -> dict:
             return await DomainProvisioner.create_retell_agents(self, context)
 
-        @hatchet_instance.step(
-            timeout="3m",
-            retries=1,
-            parents=[
-                "setup_dns_all_domains",
-                "create_vercel_project",
-                "create_github_repo",
-                "create_supabase_project",
-                "setup_stripe",
-                "setup_resend",
-                "setup_instantly",
-                "buy_twilio_number",
-                "create_retell_agents",
-            ],
-        )
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def save_infra_to_db(self, context: Context) -> dict:
             return await DomainProvisioner.save_infra_to_db(self, context)
 

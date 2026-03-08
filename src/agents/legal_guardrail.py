@@ -234,39 +234,39 @@ def register(hatchet_instance) -> type:
     """Register LegalGuardrailAgent as two Hatchet workflows: event + weekly cron."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="legal-guardrail", timeout="15m")
+    @hatchet_instance.workflow(name="legal-guardrail")
     class _LegalEvent(LegalGuardrailAgent):
-        @hatchet_instance.step(timeout="2m", retries=2)
+        @hatchet_instance.task(execution_timeout="2m", retries=2)
         async def scan_business(self, context: Context) -> dict:
             return await LegalGuardrailAgent.scan_business(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["scan_business"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def check_content(self, context: Context) -> dict:
             return await LegalGuardrailAgent.check_content(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["check_content"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def check_voice_compliance(self, context: Context) -> dict:
             return await LegalGuardrailAgent.check_voice_compliance(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["check_voice_compliance"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def report_issues(self, context: Context) -> dict:
             return await LegalGuardrailAgent.report_issues(self, context)
 
-    @hatchet_instance.workflow(name="legal-weekly-scan", on_crons=["0 5 * * 1"], timeout="15m")
+    @hatchet_instance.workflow(name="legal-weekly-scan", on_crons=["0 5 * * 1"])
     class _LegalWeekly(LegalGuardrailAgent):
-        @hatchet_instance.step(timeout="2m", retries=2)
+        @hatchet_instance.task(execution_timeout="2m", retries=2)
         async def scan_business(self, context: Context) -> dict:
             return await LegalGuardrailAgent.scan_business(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["scan_business"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def check_content(self, context: Context) -> dict:
             return await LegalGuardrailAgent.check_content(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["check_content"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def check_voice_compliance(self, context: Context) -> dict:
             return await LegalGuardrailAgent.check_voice_compliance(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["check_voice_compliance"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def report_issues(self, context: Context) -> dict:
             return await LegalGuardrailAgent.report_issues(self, context)
 

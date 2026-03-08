@@ -273,26 +273,25 @@ def register(hatchet_instance) -> type:
     @hatchet_instance.workflow(
         name="email-nurture",
         on_crons=["0 14 * * 1,4"],
-        timeout="15m",
     )
     class _Registered(EmailNurture):
-        @hatchet_instance.step(timeout="5m", retries=1)
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def identify_recipients(self, context: Context) -> dict:
             return await EmailNurture.identify_recipients(self, context)
 
-        @hatchet_instance.step(timeout="8m", retries=1, parents=["identify_recipients"])
+        @hatchet_instance.task(execution_timeout="8m", retries=1)
         async def generate_email(self, context: Context) -> dict:
             return await EmailNurture.generate_email(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["generate_email"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def check_frequency_cap(self, context: Context) -> dict:
             return await EmailNurture.check_frequency_cap(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["check_frequency_cap"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def send_email(self, context: Context) -> dict:
             return await EmailNurture.send_email(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["send_email"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def log(self, context: Context) -> dict:
             return await EmailNurture.log(self, context)
 

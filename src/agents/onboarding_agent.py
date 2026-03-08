@@ -247,27 +247,27 @@ class OnboardingStallCheckAgent(OnboardingAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="onboarding-agent", timeout="15m")
+    @hatchet_instance.workflow(name="onboarding-agent")
     class _Registered(OnboardingAgent):
-        @hatchet_instance.step(timeout="3m", retries=1)
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def check_new_signups(self, context: Context) -> dict:
             return await OnboardingAgent.check_new_signups(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["check_new_signups"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def send_nudge(self, context: Context) -> dict:
             return await OnboardingAgent.send_nudge(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["check_new_signups"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def check_aha_moment(self, context: Context) -> dict:
             return await OnboardingAgent.check_aha_moment(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["send_nudge", "check_aha_moment"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def track_progress(self, context: Context) -> dict:
             return await OnboardingAgent.track_progress(self, context)
 
-    @hatchet_instance.workflow(name="onboarding-stall-check", on_crons=["0 14 * * *"], timeout="15m")
+    @hatchet_instance.workflow(name="onboarding-stall-check", on_crons=["0 14 * * *"])
     class _StallCheck(OnboardingStallCheckAgent):
-        @hatchet_instance.step(timeout="10m", retries=1)
+        @hatchet_instance.task(execution_timeout="10m", retries=1)
         async def check_stalled(self, context: Context) -> dict:
             return await OnboardingStallCheckAgent.check_stalled(self, context)
 

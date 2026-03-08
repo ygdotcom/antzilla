@@ -232,9 +232,9 @@ class SignalMonitor(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="signal-monitor", on_crons=["0 */4 * * *"], timeout="15m")
+    @hatchet_instance.workflow(name="signal-monitor", on_crons=["0 */4 * * *"])
     class _Registered(SignalMonitor):
-        @hatchet_instance.step(timeout="12m", retries=1)
+        @hatchet_instance.task(execution_timeout="12m", retries=1)
         async def scan_signals(self, context: Context) -> dict:
             return await SignalMonitor.scan_signals(self, context)
 

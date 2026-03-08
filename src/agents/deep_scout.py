@@ -413,33 +413,29 @@ def register(hatchet_instance) -> type:
     """Register DeepScout as a Hatchet workflow (on-demand, not cron)."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="deep-scout", timeout="30m")
+    @hatchet_instance.workflow(name="deep-scout")
     class _RegisteredDeepScout(DeepScout):
-        @hatchet_instance.step(timeout="5m", retries=2)
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def research_market(self, context: Context) -> dict:
             return await DeepScout.research_market(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["research_market"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def analyze_us_competitor(self, context: Context) -> dict:
             return await DeepScout.analyze_us_competitor(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["research_market"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def discover_channels(self, context: Context) -> dict:
             return await DeepScout.discover_channels(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["research_market"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def research_regulations(self, context: Context) -> dict:
             return await DeepScout.research_regulations(self, context)
 
-        @hatchet_instance.step(
-            timeout="10m",
-            retries=2,
-            parents=["analyze_us_competitor", "discover_channels", "research_regulations"],
-        )
+        @hatchet_instance.task(execution_timeout="10m", retries=2)
         async def generate_gtm_playbook(self, context: Context) -> dict:
             return await DeepScout.generate_gtm_playbook(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["generate_gtm_playbook"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def save_and_recommend(self, context: Context) -> dict:
             return await DeepScout.save_and_recommend(self, context)
 

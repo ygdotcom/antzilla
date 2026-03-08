@@ -376,21 +376,21 @@ class VoiceAgent(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="voice-agent", timeout="15m")
+    @hatchet_instance.workflow(name="voice-agent")
     class _Registered(VoiceAgent):
-        @hatchet_instance.step(timeout="3m", retries=1)
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def prepare_call(self, context: Context) -> dict:
             return await VoiceAgent.prepare_call(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=1, parents=["prepare_call"])
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def check_compliance(self, context: Context) -> dict:
             return await VoiceAgent.check_compliance(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["check_compliance"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def make_call(self, context: Context) -> dict:
             return await VoiceAgent.make_call(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["make_call"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def process_result(self, context: Context) -> dict:
             return await VoiceAgent.process_result(self, context)
 

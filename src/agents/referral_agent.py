@@ -303,21 +303,21 @@ class ReferralAgent(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="referral-agent", timeout="15m")
+    @hatchet_instance.workflow(name="referral-agent")
     class _Registered(ReferralAgent):
-        @hatchet_instance.step(timeout="5m", retries=1)
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def nps_trigger(self, context: Context) -> dict:
             return await ReferralAgent.nps_trigger(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["nps_trigger"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def track_and_reward(self, context: Context) -> dict:
             return await ReferralAgent.track_and_reward(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=1, parents=["track_and_reward"])
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def identify_ambassadors(self, context: Context) -> dict:
             return await ReferralAgent.identify_ambassadors(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["identify_ambassadors"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def nudge_non_sharers(self, context: Context) -> dict:
             return await ReferralAgent.nudge_non_sharers(self, context)
 

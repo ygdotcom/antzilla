@@ -197,26 +197,25 @@ def register(hatchet_instance) -> type:
     @hatchet_instance.workflow(
         name="i18n-agent",
         on_crons=["0 10 * * 0"],
-        timeout="15m",
     )
     class _Registered(I18nAgent):
-        @hatchet_instance.step(timeout="5m", retries=1)
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def pull_messages(self, context: Context) -> dict:
             return await I18nAgent.pull_messages(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["pull_messages"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def validate_completeness(self, context: Context) -> dict:
             return await I18nAgent.validate_completeness(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["pull_messages"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def quality_check(self, context: Context) -> dict:
             return await I18nAgent.quality_check(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=1, parents=["validate_completeness", "quality_check"])
+        @hatchet_instance.task(execution_timeout="3m", retries=1)
         async def update_glossary(self, context: Context) -> dict:
             return await I18nAgent.update_glossary(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["update_glossary"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def report_issues(self, context: Context) -> dict:
             return await I18nAgent.report_issues(self, context)
 

@@ -190,25 +190,25 @@ def register(hatchet_instance) -> type:
     """Register GrowthHackerAgent as a Hatchet workflow."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="growth-hacker", on_crons=["0 11 * * 2"], timeout="30m")
+    @hatchet_instance.workflow(name="growth-hacker", on_crons=["0 11 * * 2"])
     class _RegisteredGrowthHacker(GrowthHackerAgent):
-        @hatchet_instance.step(timeout="15m", retries=2)
+        @hatchet_instance.task(execution_timeout="15m", retries=2)
         async def research_opportunities(self, context: Context) -> dict:
             return await GrowthHackerAgent.research_opportunities(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["research_opportunities"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def score_and_prioritize(self, context: Context) -> dict:
             return await GrowthHackerAgent.score_and_prioritize(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["score_and_prioritize"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def auto_execute_easy(self, context: Context) -> dict:
             return await GrowthHackerAgent.auto_execute_easy(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["auto_execute_easy"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def propose_complex(self, context: Context) -> dict:
             return await GrowthHackerAgent.propose_complex(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["propose_complex"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def track_and_learn(self, context: Context) -> dict:
             return await GrowthHackerAgent.track_and_learn(self, context)
 

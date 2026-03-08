@@ -148,19 +148,19 @@ def register(hatchet_instance) -> type:
     """Register DevOpsAgent as two Hatchet workflows: health (5-min) and backup (daily)."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="devops-health", on_crons=["*/5 * * * *"], timeout="5m")
+    @hatchet_instance.workflow(name="devops-health", on_crons=["*/5 * * * *"])
     class _DevOpsHealth(DevOpsAgent):
-        @hatchet_instance.step(timeout="2m", retries=1)
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def health_check(self, context: Context) -> dict:
             return await DevOpsAgent.health_check(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["health_check"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def alert_if_down(self, context: Context) -> dict:
             return await DevOpsAgent.alert_if_down(self, context)
 
-    @hatchet_instance.workflow(name="devops-backup", on_crons=["0 7 * * *"], timeout="15m")
+    @hatchet_instance.workflow(name="devops-backup", on_crons=["0 7 * * *"])
     class _DevOpsBackup(DevOpsAgent):
-        @hatchet_instance.step(timeout="10m", retries=2)
+        @hatchet_instance.task(execution_timeout="10m", retries=2)
         async def backup_db(self, context: Context) -> dict:
             return await DevOpsAgent.backup_db(self, context)
 

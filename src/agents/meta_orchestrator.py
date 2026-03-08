@@ -357,17 +357,17 @@ def register(hatchet_instance) -> type:
     """
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="meta-orchestrator", on_crons=["0 11 * * *"], timeout="15m")
+    @hatchet_instance.workflow(name="meta-orchestrator", on_crons=["0 11 * * *"])
     class _RegisteredMetaOrchestrator(MetaOrchestrator):
-        @hatchet_instance.step(timeout="5m", retries=2)
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def gather_all_metrics(self, context: Context) -> dict:
             return await MetaOrchestrator.gather_all_metrics(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["gather_all_metrics"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def analyze_and_decide(self, context: Context) -> dict:
             return await MetaOrchestrator.analyze_and_decide(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["analyze_and_decide"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def execute_decisions(self, context: Context) -> dict:
             return await MetaOrchestrator.execute_decisions(
                 self, context, _hatchet_admin=hatchet_instance.client.admin

@@ -190,25 +190,25 @@ class FulfillmentAgent(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="fulfillment", timeout="15m")
+    @hatchet_instance.workflow(name="fulfillment")
     class _Registered(FulfillmentAgent):
-        @hatchet_instance.step(timeout="2m", retries=2)
+        @hatchet_instance.task(execution_timeout="2m", retries=2)
         async def receive_job(self, context: Context) -> dict:
             return await FulfillmentAgent.receive_job(self, context)
 
-        @hatchet_instance.step(timeout="8m", retries=1, parents=["receive_job"])
+        @hatchet_instance.task(execution_timeout="8m", retries=1)
         async def process_job(self, context: Context) -> dict:
             return await FulfillmentAgent.process_job(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["process_job"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def generate_deliverable(self, context: Context) -> dict:
             return await FulfillmentAgent.generate_deliverable(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["generate_deliverable"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def deliver_to_customer(self, context: Context) -> dict:
             return await FulfillmentAgent.deliver_to_customer(self, context)
 
-        @hatchet_instance.step(timeout="1m", retries=1, parents=["deliver_to_customer"])
+        @hatchet_instance.task(execution_timeout="1m", retries=1)
         async def update_status(self, context: Context) -> dict:
             return await FulfillmentAgent.update_status(self, context)
 

@@ -336,17 +336,17 @@ class SocialAgent(BaseAgent):
 def register(hatchet_instance) -> type:
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="social-agent", on_crons=["0 13,17,21 * * *"], timeout="15m")
+    @hatchet_instance.workflow(name="social-agent", on_crons=["0 13,17,21 * * *"])
     class _Registered(SocialAgent):
-        @hatchet_instance.step(timeout="10m", retries=1)
+        @hatchet_instance.task(execution_timeout="10m", retries=1)
         async def monitor_and_engage(self, context: Context) -> dict:
             return await SocialAgent.monitor_and_engage(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["monitor_and_engage"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def linkedin_posts(self, context: Context) -> dict:
             return await SocialAgent.linkedin_posts(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=1, parents=["linkedin_posts"])
+        @hatchet_instance.task(execution_timeout="5m", retries=1)
         async def monitor_brand_mentions(self, context: Context) -> dict:
             return await SocialAgent.monitor_brand_mentions(self, context)
 

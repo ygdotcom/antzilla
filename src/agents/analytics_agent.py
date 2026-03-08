@@ -417,23 +417,23 @@ def register(hatchet_instance) -> type:
     """Register AnalyticsAgent as a Hatchet workflow."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="analytics-agent", on_crons=["0 4 * * *"], timeout="20m")
+    @hatchet_instance.workflow(name="analytics-agent", on_crons=["0 4 * * *"])
     class _RegisteredAnalyticsAgent(AnalyticsAgent):
-        @hatchet_instance.step(timeout="5m", retries=2)
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def calculate_metrics(self, context: Context) -> dict:
             return await AnalyticsAgent.calculate_metrics(self, context)
 
-        @hatchet_instance.step(timeout="3m", retries=2, parents=["calculate_metrics"])
+        @hatchet_instance.task(execution_timeout="3m", retries=2)
         async def save_snapshots(self, context: Context) -> dict:
             return await AnalyticsAgent.save_snapshots(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["save_snapshots"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def generate_report(self, context: Context) -> dict:
             return await AnalyticsAgent.generate_report(self, context)
 
-    @hatchet_instance.workflow(name="business-teardown", timeout="15m")
+    @hatchet_instance.workflow(name="business-teardown")
     class _Teardown(AnalyticsAgent):
-        @hatchet_instance.step(timeout="10m", retries=1)
+        @hatchet_instance.task(execution_timeout="10m", retries=1)
         async def teardown_business(self, context: Context) -> dict:
             return await AnalyticsAgent.teardown_business(self, context)
 

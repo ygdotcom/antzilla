@@ -292,21 +292,21 @@ def register(hatchet_instance) -> type:
     """Register IdeaFactory as a Hatchet workflow — weekly Monday 5 AM ET (10 UTC)."""
     from hatchet_sdk import Context
 
-    @hatchet_instance.workflow(name="idea-factory", on_crons=["0 10 * * 1"], timeout="30m")
+    @hatchet_instance.workflow(name="idea-factory", on_crons=["0 10 * * 1"])
     class _RegisteredIdeaFactory(IdeaFactory):
-        @hatchet_instance.step(timeout="5m", retries=2)
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def scrape_sources(self, context: Context) -> dict:
             return await IdeaFactory.scrape_sources(self, context)
 
-        @hatchet_instance.step(timeout="10m", retries=2, parents=["scrape_sources"])
+        @hatchet_instance.task(execution_timeout="10m", retries=2)
         async def filter_canadian_gap(self, context: Context) -> dict:
             return await IdeaFactory.filter_canadian_gap(self, context)
 
-        @hatchet_instance.step(timeout="2m", retries=1, parents=["filter_canadian_gap"])
+        @hatchet_instance.task(execution_timeout="2m", retries=1)
         async def score_ideas(self, context: Context) -> dict:
             return await IdeaFactory.score_ideas(self, context)
 
-        @hatchet_instance.step(timeout="5m", retries=2, parents=["score_ideas"])
+        @hatchet_instance.task(execution_timeout="5m", retries=2)
         async def save_and_notify(self, context: Context) -> dict:
             return await IdeaFactory.save_and_notify(self, context)
 

@@ -16,7 +16,6 @@ logger = structlog.get_logger()
 
 def main():
     hatchet = Hatchet()
-    worker = hatchet.worker("factory-worker")
 
     # ── Wave 1 — Ship and sell ────────────────────────────────────────────
     from src.agents.meta_orchestrator import register as register_meta
@@ -107,10 +106,17 @@ def main():
     workflows.append(register_growth(hatchet))
     workflows.append(register_knowledge(hatchet))
 
+    # Flatten any tuples from register() calls that return multiple workflows
+    flat = []
     for wf in workflows:
-        worker.register_workflow(wf)
+        if isinstance(wf, tuple):
+            flat.extend(wf)
+        else:
+            flat.append(wf)
 
-    logger.info("factory_worker_starting", worker="factory-worker", workflows=len(workflows))
+    worker = hatchet.worker("factory-worker", workflows=flat)
+
+    logger.info("factory_worker_starting", worker="factory-worker", workflows=len(flat))
     worker.start()
 
 
