@@ -1,8 +1,9 @@
-{
-	auto_https off
+# CEO Dashboard — hub.antzilla.ca with auto Let's Encrypt
+hub.antzilla.ca {
+	reverse_proxy dashboard:9000
 }
 
-# CEO Dashboard — HTTPS on :443
+# Also serve on IP (self-signed for direct IP access)
 https://:443 {
 	tls internal {
 		on_demand
@@ -34,7 +35,7 @@ https://:3002 {
 	reverse_proxy uptime-kuma:3001
 }
 
-# HTTP → HTTPS redirect on :80
+# HTTP → HTTPS redirect
 http://:80 {
 	redir https://{host}{uri} permanent
 }

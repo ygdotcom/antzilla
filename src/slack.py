@@ -13,7 +13,7 @@ from src.config import settings
 
 logger = structlog.get_logger()
 
-DASHBOARD_URL = "https://35.234.251.151"
+DASHBOARD_URL = "https://hub.antzilla.ca"
 
 
 async def send(message: str) -> None:
