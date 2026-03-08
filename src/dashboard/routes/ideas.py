@@ -52,12 +52,41 @@ Réponds UNIQUEMENT en JSON:
 
 
 @router.get("", response_class=HTMLResponse)
-async def ideas_page(request: Request, user: str = Depends(verify_credentials)):
+async def ideas_page(
+    request: Request,
+    user: str = Depends(verify_credentials),
+    status: str = "",
+    sort: str = "score",
+    q: str = "",
+):
+    # Build query with filters
+    conditions = []
+    params: dict = {}
+
+    if status:
+        conditions.append("status = :status")
+        params["status"] = status
+
+    if q:
+        conditions.append("(name ILIKE :q OR niche ILIKE :q OR us_equivalent ILIKE :q)")
+        params["q"] = f"%{q}%"
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    sort_map = {
+        "score": "score DESC NULLS LAST",
+        "score_asc": "score ASC NULLS LAST",
+        "newest": "created_at DESC",
+        "oldest": "created_at ASC",
+        "name": "name ASC",
+    }
+    order = sort_map.get(sort, "score DESC NULLS LAST")
+
     async with SessionLocal() as db:
         all_ideas = (await db.execute(text(
-            "SELECT id, name, niche, us_equivalent, score, status, created_at "
-            "FROM ideas ORDER BY score DESC NULLS LAST, created_at DESC"
-        ))).fetchall()
+            f"SELECT id, name, niche, us_equivalent, score, status, created_at "
+            f"FROM ideas {where} ORDER BY {order}"
+        ), params)).fetchall()
 
     return templates.TemplateResponse("ideas.html", {
         "request": request,
@@ -67,6 +96,9 @@ async def ideas_page(request: Request, user: str = Depends(verify_credentials)):
              "status": i.status, "at": i.created_at.isoformat() if i.created_at else ""}
             for i in all_ideas
         ],
+        "current_status": status,
+        "current_sort": sort,
+        "current_q": q,
     })
 
 

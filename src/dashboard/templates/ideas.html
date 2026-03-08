@@ -76,6 +76,50 @@
     </div>
   </div>
 
+  <!-- Filters & Sort -->
+  <div class="flex flex-wrap items-center gap-3">
+    <!-- Search -->
+    <div class="relative flex-1 min-w-[200px] max-w-sm">
+      <input
+        id="search-input"
+        type="text"
+        value="{{ current_q|default('') }}"
+        placeholder="Search ideas..."
+        class="w-full pl-9 pr-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+        onkeydown="if(event.key==='Enter') applyFilters()"
+      >
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+    </div>
+
+    <!-- Status filter -->
+    <select id="status-filter" onchange="applyFilters()" class="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 focus:outline-none">
+      <option value="" {% if not current_status %}selected{% endif %}>All statuses</option>
+      <option value="new" {% if current_status == 'new' %}selected{% endif %}>New</option>
+      <option value="scouting" {% if current_status == 'scouting' %}selected{% endif %}>Scouting</option>
+      <option value="validated" {% if current_status == 'validated' %}selected{% endif %}>Validated</option>
+      <option value="building" {% if current_status == 'building' %}selected{% endif %}>Building</option>
+      <option value="live" {% if current_status == 'live' %}selected{% endif %}>Live</option>
+      <option value="killed" {% if current_status == 'killed' %}selected{% endif %}>Killed</option>
+    </select>
+
+    <!-- Sort -->
+    <select id="sort-select" onchange="applyFilters()" class="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 focus:outline-none">
+      <option value="score" {% if current_sort == 'score' %}selected{% endif %}>Highest score</option>
+      <option value="score_asc" {% if current_sort == 'score_asc' %}selected{% endif %}>Lowest score</option>
+      <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Newest first</option>
+      <option value="oldest" {% if current_sort == 'oldest' %}selected{% endif %}>Oldest first</option>
+      <option value="name" {% if current_sort == 'name' %}selected{% endif %}>Name A-Z</option>
+    </select>
+
+    <!-- Clear filters -->
+    {% if current_status or current_q or current_sort != 'score' %}
+    <a href="/ideas" class="px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">Clear</a>
+    {% endif %}
+
+    <!-- Count -->
+    <span class="text-zinc-500 text-sm ml-auto">{{ ideas|length }} result{{ 's' if ideas|length != 1 }}</span>
+  </div>
+
   <!-- Ideas table -->
   <section class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
     <div class="overflow-x-auto">
@@ -164,6 +208,17 @@
   </section>
 </div>
 <script>
+function applyFilters() {
+  const q = document.getElementById('search-input').value.trim();
+  const status = document.getElementById('status-filter').value;
+  const sort = document.getElementById('sort-select').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  if (sort && sort !== 'score') params.set('sort', sort);
+  window.location.href = '/ideas' + (params.toString() ? '?' + params.toString() : '');
+}
+
 async function proposeIdea() {
   const name = document.getElementById('prop-name').value.trim();
   const niche = document.getElementById('prop-niche').value.trim();
