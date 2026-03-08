@@ -87,11 +87,22 @@
   <main class="ml-56 min-h-screen">
     <!-- Top bar with notifications -->
     <div class="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-zinc-800/50 px-8 py-3 flex items-center justify-end">
-      <a href="/decisions" class="relative p-2 rounded-lg hover:bg-zinc-800 transition-colors" title="Notifications">
-        <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
-        <span id="notif-badge" hx-get="/api/notifications/count" hx-trigger="load, every 10s" hx-swap="innerHTML" class="absolute -top-0.5 -right-0.5"></span>
-      </a>
+      <div class="relative" id="notif-wrapper">
+        <button onclick="document.getElementById('notif-dropdown').classList.toggle('hidden')" class="relative p-2 rounded-lg hover:bg-zinc-800 transition-colors" title="Notifications">
+          <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+          <span id="notif-badge" hx-get="/api/notifications/count" hx-trigger="load, every 10s" hx-swap="innerHTML" class="absolute -top-0.5 -right-0.5"></span>
+        </button>
+        <div id="notif-dropdown" class="hidden absolute right-0 top-full mt-2 w-80 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-zinc-800">
+            <span class="text-white text-sm font-semibold">Notifications</span>
+          </div>
+          <div id="notif-items" hx-get="/api/notifications/list" hx-trigger="intersect once, every 10s" hx-swap="innerHTML">
+            <div class="px-4 py-6 text-center text-zinc-500 text-sm">Loading...</div>
+          </div>
+        </div>
+      </div>
     </div>
+    <script>document.addEventListener('click',function(e){var w=document.getElementById('notif-wrapper');var d=document.getElementById('notif-dropdown');if(w&&d&&!w.contains(e.target))d.classList.add('hidden')})</script>
     <div class="px-8 py-6">
       {% block content %}{% endblock %}
     </div>

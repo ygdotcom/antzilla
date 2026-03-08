@@ -204,11 +204,10 @@ async def notification_count(request: Request):
     from src.db import SessionLocal
     try:
         async with SessionLocal() as db:
-            # Count: validated ideas awaiting approval + pending workflow triggers
             row = (await db.execute(sa_text(
                 "SELECT "
                 "(SELECT COUNT(*) FROM ideas WHERE status = 'validated') + "
-                "(SELECT COUNT(*) FROM workflow_triggers WHERE status = 'pending' AND workflow_name LIKE 'approve_%') "
+                "(SELECT COUNT(*) FROM leads WHERE status = 'pending_approval') "
                 "AS total"
             ))).fetchone()
             count = row.total or 0
@@ -219,6 +218,44 @@ async def notification_count(request: Request):
     except Exception:
         pass
     return HTMLResponse("")
+
+
+@app.get("/api/notifications/list", response_class=HTMLResponse)
+async def notification_list(request: Request):
+    """Returns dropdown HTML with pending items."""
+    user = get_current_user(request)
+    if not user:
+        return HTMLResponse("")
+    from sqlalchemy import text as sa_text
+    from src.db import SessionLocal
+    items = []
+    try:
+        async with SessionLocal() as db:
+            ideas = (await db.execute(sa_text(
+                "SELECT id, name, score FROM ideas WHERE status = 'validated' ORDER BY score DESC LIMIT 10"
+            ))).fetchall()
+            for i in ideas:
+                items.append(
+                    f'<a href="/ideas/{i.id}" class="block px-4 py-3 hover:bg-zinc-800 border-b border-zinc-800/50">'
+                    f'<p class="text-white text-sm font-medium">Approve idea?</p>'
+                    f'<p class="text-zinc-400 text-xs">{i.name} — score {float(i.score or 0):.1f}</p></a>'
+                )
+            outreach = (await db.execute(sa_text(
+                "SELECT COUNT(*) AS cnt FROM leads WHERE status = 'pending_approval'"
+            ))).fetchone()
+            if outreach.cnt and outreach.cnt > 0:
+                items.append(
+                    f'<a href="/decisions" class="block px-4 py-3 hover:bg-zinc-800 border-b border-zinc-800/50">'
+                    f'<p class="text-white text-sm font-medium">Outreach approval</p>'
+                    f'<p class="text-zinc-400 text-xs">{outreach.cnt} messages waiting for review</p></a>'
+                )
+    except Exception:
+        pass
+    if not items:
+        return HTMLResponse(
+            '<div class="px-4 py-6 text-center text-zinc-500 text-sm">No pending actions</div>'
+        )
+    return HTMLResponse("".join(items))
 
 
 @app.get("/businesses", response_class=HTMLResponse)

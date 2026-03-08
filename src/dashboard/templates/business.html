@@ -53,13 +53,12 @@
     <h3 class="font-semibold text-white mb-4">Funnel</h3>
     {% set stages = ['new', 'enriched', 'contacted', 'replied', 'converted'] %}
     {% set funnel_data = funnel|default({}) %}
-    {% set funnel_counts = [funnel_data.get(s, 0) for s in stages] %}
-    {% set max_count = (funnel_counts + [1])|max %}
+    {% set max_count = [funnel_data.get('new', 0), funnel_data.get('enriched', 0), funnel_data.get('contacted', 0), funnel_data.get('replied', 0), funnel_data.get('converted', 0), 1]|max %}
     <div class="space-y-4">
       {% for stage in stages %}
-      {% set count = funnel_data.get(stage, 0) %}
+      {% set count = funnel_data.get(stage, 0)|default(0) %}
       {% set prev_count = funnel_data.get(stages[loop.index0 - 1], 1) if loop.index0 > 0 else 1 %}
-      {% set rate = (count / prev_count * 100) if prev_count > 0 else 0 %}
+      {% set rate = (count / [prev_count, 1]|max * 100) %}
       <div>
         <div class="flex justify-between text-sm mb-1">
           <span class="text-zinc-400 capitalize">{{ stage }}</span>
