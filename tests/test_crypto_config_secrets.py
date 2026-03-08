@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import base64
+
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -114,9 +114,9 @@ def client():
 
 
 @pytest.fixture
-def auth_headers():
-    creds = base64.b64encode(b"admin:factory").decode()
-    return {"Authorization": f"Basic {creds}"}
+def auth_cookies(client):
+    import os; os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
+    resp = client.post("/login", data={"username": "admin", "password": "factory"}, follow_redirects=False); return dict(resp.cookies)
 
 
 class TestSecretsSchema:
@@ -141,31 +141,31 @@ class TestSecretsSchema:
 
 
 class TestSetupWizard:
-    def test_setup_page_loads(self, client, auth_headers):
+    def test_setup_page_loads(self, client):
         with patch("src.config.Settings.is_setup_complete", return_value=False):
             with patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}):
-                resp = client.get("/setup", headers=auth_headers)
+                resp = client.get("/setup", )
         assert resp.status_code == 200
 
-    def test_setup_redirects_to_settings_when_configured(self, client, auth_headers):
+    def test_setup_redirects_to_settings_when_configured(self, client):
         with patch("src.config.Settings.is_setup_complete", return_value=True):
-            resp = client.get("/setup", headers=auth_headers, follow_redirects=False)
+            resp = client.get("/setup", follow_redirects=False)
         assert resp.status_code == 302
         assert "/settings" in resp.headers.get("location", "")
 
 
 class TestSettingsPage:
-    def test_settings_page_loads(self, client, auth_headers):
+    def test_settings_page_loads(self, client):
         with (
             patch("src.config.Settings.is_setup_complete", return_value=True),
             patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}),
         ):
-            resp = client.get("/settings", headers=auth_headers)
+            resp = client.get("/settings", )
         assert resp.status_code == 200
 
 
 class TestSecretsSaveEndpoint:
-    def test_save_secret(self, client, auth_headers):
+    def test_save_secret(self, client):
         os.environ["ENCRYPTION_KEY"] = "a" * 64
 
         mock_db = AsyncMock()
@@ -181,7 +181,6 @@ class TestSecretsSaveEndpoint:
             resp = client.post(
                 "/api/secrets/save",
                 json={"key": "TEST_KEY", "value": "test_value", "category": "core", "display_name": "Test"},
-                headers=auth_headers,
             )
         assert resp.status_code == 200
         assert "Saved" in resp.text
@@ -189,7 +188,7 @@ class TestSecretsSaveEndpoint:
 
 
 class TestSecretsTestEndpoint:
-    def test_test_generic_key(self, client, auth_headers):
+    def test_test_generic_key(self, client):
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
@@ -203,7 +202,6 @@ class TestSecretsTestEndpoint:
             resp = client.post(
                 "/api/secrets/test",
                 json={"key": "SOME_API_KEY", "value": "a_long_enough_value_here"},
-                headers=auth_headers,
             )
         assert resp.status_code == 200
         assert "Connected" in resp.text
@@ -212,18 +210,18 @@ class TestSecretsTestEndpoint:
 class TestSetupRedirect:
     """If secrets table is empty, redirect non-setup pages to /setup."""
 
-    def test_overview_redirects_when_not_configured(self, client, auth_headers):
+    def test_overview_redirects_when_not_configured(self, client):
         with patch("src.config.Settings.is_setup_complete", return_value=False):
-            resp = client.get("/", headers=auth_headers, follow_redirects=False)
+            resp = client.get("/", follow_redirects=False)
         assert resp.status_code == 302
         assert "/setup" in resp.headers.get("location", "")
 
-    def test_setup_does_not_redirect(self, client, auth_headers):
+    def test_setup_does_not_redirect(self, client):
         with (
             patch("src.config.Settings.is_setup_complete", return_value=False),
             patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}),
         ):
-            resp = client.get("/setup", headers=auth_headers)
+            resp = client.get("/setup", )
         assert resp.status_code == 200
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import base64
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,31 +26,50 @@ def client():
     return TestClient(app)
 
 
+def _login(client) -> dict:
+    """Log in and return cookies dict for authenticated requests."""
+    os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
+    resp = client.post("/login", data={"username": "admin", "password": "factory"}, follow_redirects=False)
+    return dict(resp.cookies)
+
+
+@pytest.fixture
+def auth_cookies(client):
+    return _login(client)
+
+
 @pytest.fixture
 def auth_headers():
-    creds = base64.b64encode(b"admin:factory").decode()
-    return {"Authorization": f"Basic {creds}"}
-
-
-@pytest.fixture
-def bad_auth_headers():
-    creds = base64.b64encode(b"wrong:wrong").decode()
-    return {"Authorization": f"Basic {creds}"}
+    """Backwards compat — returns empty dict since we use cookies now."""
+    return {}
 
 
 # ── Auth Tests ────────────────────────────────────────────────────────────────
 
 
 class TestAuth:
-    def test_no_auth_returns_401(self, client):
-        resp = client.get("/")
-        assert resp.status_code == 401
+    def test_no_auth_redirects_to_login(self, client):
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers.get("location", "")
 
-    def test_bad_auth_returns_401(self, client, bad_auth_headers):
-        resp = client.get("/", headers=bad_auth_headers)
-        assert resp.status_code == 401
+    def test_login_page_loads(self, client):
+        resp = client.get("/login")
+        assert resp.status_code == 200
+        assert "Sign in" in resp.text
 
-    def test_good_auth_succeeds(self, client, auth_headers):
+    def test_bad_login_shows_error(self, client):
+        resp = client.post("/login", data={"username": "wrong", "password": "wrong"})
+        assert resp.status_code == 401
+        assert "Invalid" in resp.text
+
+    def test_good_login_sets_cookie(self, client):
+        os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
+        resp = client.post("/login", data={"username": "admin", "password": "factory"}, follow_redirects=False)
+        assert resp.status_code == 303
+        assert "factory_session" in resp.cookies
+
+    def test_authenticated_request_succeeds(self, client, auth_cookies):
         with patch("src.dashboard.routes.overview._get_overview_data", new_callable=AsyncMock) as mock:
             mock.return_value = {
                 "total_mrr": 0, "customers_active": 0, "customers_new_7d": 0,
@@ -59,8 +78,13 @@ class TestAuth:
                 "agent_runs_today": 0, "agent_success_rate": 0, "agent_errors_today": 0,
                 "businesses": [], "improvements": [],
             }
-            resp = client.get("/", headers=auth_headers)
+            resp = client.get("/", cookies=auth_cookies)
         assert resp.status_code == 200
+
+    def test_logout_clears_cookie(self, client, auth_cookies):
+        resp = client.get("/logout", cookies=auth_cookies, follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers.get("location", "")
 
 
 # ── Template Existence Tests ──────────────────────────────────────────────────
@@ -79,7 +103,7 @@ class TestTemplates:
 
 
 class TestOverviewRoute:
-    def test_returns_html(self, client, auth_headers):
+    def test_returns_html(self, client, auth_cookies):
         with patch("src.dashboard.routes.overview._get_overview_data", new_callable=AsyncMock) as mock:
             mock.return_value = {
                 "total_mrr": 1500.0, "customers_active": 15, "customers_new_7d": 3,
@@ -94,33 +118,33 @@ class TestOverviewRoute:
                     {"agent": "content_engine", "description": "Increase posting frequency", "priority": "high"},
                 ],
             }
-            resp = client.get("/", headers=auth_headers)
+            resp = client.get("/", cookies=auth_cookies)
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "Factory" in resp.text
 
 
 class TestBusinessRoutes:
-    def test_controls_endpoint_exists(self, client, auth_headers):
+    def test_controls_endpoint_exists(self, client, auth_cookies):
         with patch("src.dashboard.routes.businesses._get_business_data", new_callable=AsyncMock, return_value=None):
-            resp = client.get("/business/nonexistent", headers=auth_headers)
+            resp = client.get("/business/nonexistent", cookies=auth_cookies)
         assert resp.status_code in (200, 404)
 
 
 class TestAgentRoutes:
-    def test_agents_page(self, client, auth_headers):
+    def test_agents_page(self, client, auth_cookies):
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
         mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=MagicMock(return_value=[])))
 
         with patch("src.dashboard.routes.agents.SessionLocal", return_value=mock_db):
-            resp = client.get("/agents", headers=auth_headers)
+            resp = client.get("/agents", cookies=auth_cookies)
         assert resp.status_code == 200
 
 
 class TestBudgetRoutes:
-    def test_budget_page(self, client, auth_headers):
+    def test_budget_page(self, client, auth_cookies):
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
@@ -133,31 +157,31 @@ class TestBudgetRoutes:
         ))
 
         with patch("src.dashboard.routes.budget.SessionLocal", return_value=mock_db):
-            resp = client.get("/budget", headers=auth_headers)
+            resp = client.get("/budget", cookies=auth_cookies)
         assert resp.status_code == 200
 
 
 class TestDecisionRoutes:
-    def test_decisions_page(self, client, auth_headers):
+    def test_decisions_page(self, client, auth_cookies):
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
         mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=MagicMock(return_value=[])))
 
         with patch("src.dashboard.routes.decisions.SessionLocal", return_value=mock_db):
-            resp = client.get("/decisions", headers=auth_headers)
+            resp = client.get("/decisions", cookies=auth_cookies)
         assert resp.status_code == 200
 
 
 class TestIdeaRoutes:
-    def test_ideas_page(self, client, auth_headers):
+    def test_ideas_page(self, client, auth_cookies):
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
         mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=MagicMock(return_value=[])))
 
         with patch("src.dashboard.routes.ideas.SessionLocal", return_value=mock_db):
-            resp = client.get("/ideas", headers=auth_headers)
+            resp = client.get("/ideas", cookies=auth_cookies)
         assert resp.status_code == 200
 
 

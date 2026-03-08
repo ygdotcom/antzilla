@@ -9,46 +9,21 @@
 from __future__ import annotations
 
 import json
-import secrets as _secrets
 from datetime import datetime, timezone
-from pathlib import Path
 
 import httpx
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy import text
-from starlette.status import HTTP_401_UNAUTHORIZED
 
 from src.config import settings
 from src.crypto import decrypt, encrypt
+from src.dashboard.deps import templates, verify_credentials
 from src.db import SessionLocal
 
 logger = structlog.get_logger()
-
-_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
-
-_security = HTTPBasic()
-
-
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(_security)):
-    correct_user = _secrets.compare_digest(
-        credentials.username.encode(), settings.DASHBOARD_USER.encode()
-    )
-    correct_pass = _secrets.compare_digest(
-        credentials.password.encode(), settings.DASHBOARD_PASSWORD.encode()
-    )
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 router = APIRouter()
 
@@ -218,7 +193,7 @@ TEST_FUNCTIONS = {
 # ── Routes ───────────────────────────────────────────────────────────────
 
 @router.get("/setup", response_class=HTMLResponse)
-async def setup_wizard(request: Request, step: int = 1, user: str = Depends(verify_credentials)):
+async def setup_wizard(request: Request, step: int = 1):
     if settings.is_setup_complete():
         return RedirectResponse("/settings", status_code=302)
 
@@ -259,7 +234,7 @@ class SecretTestRequest(BaseModel):
 
 
 @router.post("/api/secrets/test", response_class=HTMLResponse)
-async def test_secret(req: SecretTestRequest, user: str = Depends(verify_credentials)):
+async def test_secret(request: Request, req: SecretTestRequest):
     """Test a single API key connection."""
     tester = TEST_FUNCTIONS.get(req.key, _test_generic)
     try:
@@ -300,7 +275,7 @@ class SecretSaveRequest(BaseModel):
 
 
 @router.post("/api/secrets/save", response_class=HTMLResponse)
-async def save_secret(req: SecretSaveRequest, user: str = Depends(verify_credentials)):
+async def save_secret(request: Request, req: SecretSaveRequest):
     """Encrypt and upsert a secret into the DB."""
     encrypted = encrypt(req.value)
 
