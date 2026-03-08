@@ -56,6 +56,7 @@ def main():
     from src.agents.budget_guardian import register as register_budget_guardian
     from src.agents.growth_hacker import register as register_growth
     from src.agents.knowledge_agent import register as register_knowledge
+    from src.agents.design_qa import register as register_design_qa
 
     workflows = []
 
@@ -105,6 +106,7 @@ def main():
     workflows.append(register_budget_guardian(hatchet))
     workflows.append(register_growth(hatchet))
     workflows.append(register_knowledge(hatchet))
+    workflows.append(register_design_qa(hatchet))
 
     # Flatten any tuples from register() calls that return multiple workflows
     flat = []

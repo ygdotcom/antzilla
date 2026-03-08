@@ -222,6 +222,34 @@ async def run_build_pipeline(business_id: int):
                 build_ctx._outputs[step_name] = result if isinstance(result, dict) else {}
 
             finalize_result = build_ctx._outputs.get("finalize", {})
+            deployment_url = finalize_result.get("deployment_url", "")
+
+            # --- STEP 3: Design QA (logo + review) ---
+            logger.info("build_pipeline_step", step="design_qa", business=biz.name)
+
+            class DesignContext:
+                def __init__(self, biz_id, brand, url):
+                    self._input = {"business_id": biz_id, "brand_kit": brand, "deployment_url": url}
+                    self._outputs = {}
+                def workflow_input(self):
+                    return self._input
+                def step_output(self, name):
+                    return self._outputs.get(name, {})
+
+            from src.agents.design_qa import DesignQA
+            designer = DesignQA()
+            design_ctx = DesignContext(business_id, brand_kit, deployment_url)
+
+            for step_name, step_fn in [
+                ("generate_logo", designer.generate_logo),
+                ("screenshot_and_review", designer.screenshot_and_review),
+                ("apply_fixes", designer.apply_fixes),
+            ]:
+                logger.info("design_qa_step", step=step_name, business=biz.name)
+                result = await step_fn(design_ctx)
+                design_ctx._outputs[step_name] = result if isinstance(result, dict) else {}
+
+            qa_result = design_ctx._outputs.get("apply_fixes", {})
 
             async with SessionLocal() as db:
                 await db.execute(sa_text(
@@ -231,13 +259,17 @@ async def run_build_pipeline(business_id: int):
                     "result": json.dumps({
                         "github_repo": finalize_result.get("github_repo", ""),
                         "files_pushed": finalize_result.get("files_pushed", 0),
+                        "deployment_url": deployment_url,
+                        "design_score": qa_result.get("overall_score"),
+                        "logo_pushed": qa_result.get("logo_pushed", 0),
                     }),
                     "biz_id": business_id,
                 })
                 await db.commit()
 
             logger.info("build_pipeline_complete", business=biz.name,
-                        repo=finalize_result.get("github_repo"))
+                        repo=finalize_result.get("github_repo"),
+                        design_score=qa_result.get("overall_score"))
 
         except Exception as exc:
             logger.error("build_pipeline_failed", business_id=business_id,

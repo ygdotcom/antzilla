@@ -511,9 +511,84 @@ class Builder(BaseAgent):
         )
         return {"repo": full_name, "created": True}
 
-    async def push_template(self, context) -> dict:
-        """Step 5: Push the template-repo as the project base to GitHub."""
+    async def _batch_commit(self, github_repo: str, files: list[dict], message: str) -> dict:
+        """Push multiple files in a single Git commit using the Trees API."""
         import base64
+
+        token = settings.get("GITHUB_TOKEN")
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            # Get the latest commit SHA (HEAD of main)
+            ref_resp = await client.get(
+                f"https://api.github.com/repos/{github_repo}/git/ref/heads/main", headers=headers
+            )
+            if ref_resp.status_code != 200:
+                return {"success": False, "error": f"get ref: {ref_resp.status_code}"}
+            head_sha = ref_resp.json()["object"]["sha"]
+
+            # Get the tree SHA of HEAD
+            commit_resp = await client.get(
+                f"https://api.github.com/repos/{github_repo}/git/commits/{head_sha}", headers=headers
+            )
+            base_tree_sha = commit_resp.json()["tree"]["sha"]
+
+            # Create blobs for each file
+            tree_items = []
+            for f in files:
+                blob_resp = await client.post(
+                    f"https://api.github.com/repos/{github_repo}/git/blobs",
+                    headers=headers,
+                    json={"content": f["content"], "encoding": "utf-8"},
+                )
+                if blob_resp.status_code != 201:
+                    logger.warning("blob_create_failed", path=f["path"], status=blob_resp.status_code)
+                    continue
+                tree_items.append({
+                    "path": f["path"],
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": blob_resp.json()["sha"],
+                })
+
+            if not tree_items:
+                return {"success": False, "error": "no blobs created"}
+
+            # Create a new tree
+            tree_resp = await client.post(
+                f"https://api.github.com/repos/{github_repo}/git/trees",
+                headers=headers,
+                json={"base_tree": base_tree_sha, "tree": tree_items},
+            )
+            if tree_resp.status_code != 201:
+                return {"success": False, "error": f"create tree: {tree_resp.status_code}"}
+
+            # Create a commit
+            new_commit_resp = await client.post(
+                f"https://api.github.com/repos/{github_repo}/git/commits",
+                headers=headers,
+                json={
+                    "message": message,
+                    "tree": tree_resp.json()["sha"],
+                    "parents": [head_sha],
+                },
+            )
+            if new_commit_resp.status_code != 201:
+                return {"success": False, "error": f"create commit: {new_commit_resp.status_code}"}
+
+            # Update the reference to point to the new commit
+            update_resp = await client.patch(
+                f"https://api.github.com/repos/{github_repo}/git/refs/heads/main",
+                headers=headers,
+                json={"sha": new_commit_resp.json()["sha"]},
+            )
+            if update_resp.status_code != 200:
+                return {"success": False, "error": f"update ref: {update_resp.status_code}"}
+
+        return {"success": True, "files": len(tree_items), "sha": new_commit_resp.json()["sha"]}
+
+    async def push_template(self, context) -> dict:
+        """Step 5: Push the entire template-repo as a single commit."""
         from pathlib import Path
 
         repo_info = context.step_output("create_github_repo")
@@ -521,9 +596,7 @@ class Builder(BaseAgent):
         if not github_repo:
             return {"pushed": 0, "error": "No repo"}
 
-        token = settings.get("GITHUB_TOKEN")
         template_dir = Path(__file__).resolve().parent.parent.parent / "template-repo"
-
         if not template_dir.exists():
             logger.warning("template_repo_missing", path=str(template_dir))
             return {"pushed": 0, "error": "template-repo/ not found"}
@@ -542,40 +615,19 @@ class Builder(BaseAgent):
             except (UnicodeDecodeError, OSError):
                 continue
 
-        pushed = 0
-        async with httpx.AsyncClient(timeout=20) as client:
-            headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
-
-            for item in files_to_push:
-                try:
-                    existing = await client.get(
-                        f"https://api.github.com/repos/{github_repo}/contents/{item['path']}",
-                        headers=headers,
-                    )
-                    payload = {
-                        "message": f"chore: template {item['path']}",
-                        "content": base64.b64encode(item["content"].encode()).decode(),
-                    }
-                    if existing.status_code == 200:
-                        payload["sha"] = existing.json().get("sha")
-                    resp = await client.put(
-                        f"https://api.github.com/repos/{github_repo}/contents/{item['path']}",
-                        headers=headers,
-                        json=payload,
-                    )
-                    if resp.status_code in (200, 201):
-                        pushed += 1
-                except Exception as exc:
-                    logger.warning("template_push_failed", file=item["path"], error=str(exc))
+        result = await self._batch_commit(
+            github_repo, files_to_push,
+            "chore: initialize from factory template-repo"
+        )
 
         input_data = context.workflow_input()
         await self.log_execution(
             action="push_template",
-            result={"pushed": pushed, "total": len(files_to_push), "repo": github_repo},
+            result={"pushed": result.get("files", 0), "total": len(files_to_push), "repo": github_repo},
             business_id=input_data.get("business_id"),
         )
-        logger.info("template_pushed", pushed=pushed, total=len(files_to_push))
-        return {"pushed": pushed, "total": len(files_to_push)}
+        logger.info("template_pushed", pushed=result.get("files", 0), total=len(files_to_push), single_commit=True)
+        return {"pushed": result.get("files", 0), "total": len(files_to_push)}
 
     PROTECTED_TEMPLATE_FILES = {
         "src/app/[locale]/layout.tsx",
@@ -598,7 +650,7 @@ class Builder(BaseAgent):
     }
 
     async def push_to_github(self, context) -> dict:
-        """Step 6: Push Claude-generated code on top of the template."""
+        """Step 6: Push Claude-generated code on top of the template (single commit)."""
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
         repo_info = context.step_output("create_github_repo")
@@ -610,10 +662,10 @@ class Builder(BaseAgent):
         rls = context.step_output("verify_rls")
 
         code_output = code.get("code_output", {})
+
         def _is_protected(path: str) -> bool:
             if path in self.PROTECTED_TEMPLATE_FILES:
                 return True
-            # Also block by filename for critical files
             protected_names = {"layout.tsx", "globals.css", "middleware.ts", "next.config.ts",
                                "tailwind.config.ts", "tsconfig.json", "package.json"}
             basename = path.rsplit("/", 1)[-1] if "/" in path else path
@@ -622,57 +674,31 @@ class Builder(BaseAgent):
                 return True
             return False
 
-        files = [f for f in code_output.get("files", []) if not _is_protected(f.get("path", ""))]
-        migrations = rls.get("fixed_migrations", [])
+        all_files = []
+        for f in code_output.get("files", []):
+            if f.get("path") and f.get("content") and not _is_protected(f["path"]):
+                all_files.append({"path": f["path"], "content": f["content"]})
+        for mig in rls.get("fixed_migrations", []):
+            if mig.get("content"):
+                fn = mig.get("filename", "002_tables.sql")
+                all_files.append({"path": f"supabase/migrations/{fn}", "content": mig["content"]})
 
-        import base64
-        pushed_files = []
-        async with httpx.AsyncClient(timeout=15) as client:
-            headers = {
-                "Authorization": f"Bearer {settings.get('GITHUB_TOKEN')}",
-                "Accept": "application/vnd.github+json",
-            }
+        if not all_files:
+            logger.warning("no_files_to_push")
+            return {"pushed_files": [], "repo": github_repo}
 
-            all_files = []
-            for f in files:
-                if f.get("path") and f.get("content"):
-                    all_files.append({"path": f["path"], "content": f["content"]})
-            for mig in migrations:
-                if mig.get("content"):
-                    fn = mig.get("filename", "002_tables.sql")
-                    all_files.append({"path": f"supabase/migrations/{fn}", "content": mig["content"]})
-
-            for f in all_files:
-                try:
-                    # Check if file exists (get SHA for update)
-                    existing = await client.get(
-                        f"https://api.github.com/repos/{github_repo}/contents/{f['path']}",
-                        headers=headers,
-                    )
-                    payload = {
-                        "message": f"feat: add {f['path']}",
-                        "content": base64.b64encode(f["content"].encode()).decode(),
-                    }
-                    if existing.status_code == 200:
-                        payload["sha"] = existing.json().get("sha")
-                        payload["message"] = f"feat: update {f['path']}"
-
-                    resp = await client.put(
-                        f"https://api.github.com/repos/{github_repo}/contents/{f['path']}",
-                        headers=headers,
-                        json=payload,
-                    )
-                    pushed_files.append({"path": f["path"], "status": resp.status_code})
-                except Exception as exc:
-                    pushed_files.append({"path": f["path"], "status": "error", "error": str(exc)})
+        result = await self._batch_commit(
+            github_repo, all_files,
+            f"feat: add generated business code ({len(all_files)} files)"
+        )
 
         await self.log_execution(
             action="push_to_github",
-            result={"files_pushed": len(pushed_files), "repo": github_repo},
+            result={"files_pushed": result.get("files", 0), "repo": github_repo},
             business_id=business_id,
         )
 
-        return {"pushed_files": pushed_files, "repo": github_repo}
+        return {"pushed_files": [{"path": f["path"]} for f in all_files], "repo": github_repo}
 
     async def deploy_vercel(self, context) -> dict:
         """Step 6: Create Vercel project linked to GitHub repo and trigger deploy."""
