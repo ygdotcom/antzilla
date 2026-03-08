@@ -5,7 +5,7 @@
 32 autonomous agents orchestrated by [Hatchet](https://hatchet.run), running on a single GCP VM with Docker.
 
 ```
-378 tests | 13,000+ lines of Python | 69 source files | 0 external SaaS for CRM
+381 tests | 13,500 lines of Python | 69 source files | Supabase Auth | HTTPS
 ```
 
 ---
@@ -146,9 +146,13 @@ Insights flow into: Deep Scout (GTM Playbooks), Outreach (email templates), Idea
 
 ---
 
-## Secrets Management
+## Auth and Secrets
 
-API keys are stored **AES-256-GCM encrypted** in the `secrets` table. The `.env` only has 6 boot variables. First boot → Setup Wizard at `/setup` with 5 steps and test buttons per key.
+**Dashboard login** is via [Supabase Auth](https://supabase.com/auth) (email/password). First user gets admin role. Invite team members from Settings with roles (admin/operator/viewer). Session stored in HMAC-signed cookie.
+
+**API keys** are stored **AES-256-GCM encrypted** in the `secrets` table. The `.env` only has boot variables (Postgres password, encryption key, Supabase URL). First boot → Setup Wizard at `/setup` with 5 steps and test buttons per key.
+
+**HTTPS** via Caddy reverse proxy with auto-TLS. HTTP redirects to HTTPS.
 
 ---
 
@@ -157,8 +161,10 @@ API keys are stored **AES-256-GCM encrypted** in the `secrets` table. The `.env`
 | Layer | Choice |
 |-------|--------|
 | Orchestration | Hatchet (DAG workflows, cron, retries, dashboard) |
+| Auth | Supabase Auth (email/password, team invites, roles) |
 | LLM | Claude Opus/Sonnet/Haiku (auto-downgrading at budget limits) |
 | Database | Postgres + pgvector (CRM + RAG + secrets + knowledge) |
+| Reverse proxy | Caddy (automatic HTTPS, HTTP→HTTPS redirect) |
 | DNS | Cloudflare |
 | Domains | Namecheap (.ca + secondary cold email domains) |
 | Hosting | Vercel (per-business Next.js apps) |
@@ -174,17 +180,17 @@ API keys are stored **AES-256-GCM encrypted** in the `secrets` table. The `.env`
 
 ```bash
 # Local development
-cp .env.example .env    # Edit with your passwords
+cp .env.example .env    # Add Supabase keys + generate ENCRYPTION_KEY
 docker compose up -d
-# Dashboard: http://localhost:9000  (admin/factory)
+# Dashboard: https://localhost  (login with Supabase user)
 
 # Run tests
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest tests/ -v    # 378 tests, ~1 second
+python -m pytest tests/ -v    # 381 tests, ~1 second
 
-# Deploy to GCP (Montreal)
-bash scripts/deploy-gcp.sh    # Creates VM, configures everything
+# Deploy to GCP (Montreal, e2-standard-4, 200GB SSD)
+bash scripts/deploy-gcp.sh
 
 # Update deployed instance
 bash scripts/update.sh
