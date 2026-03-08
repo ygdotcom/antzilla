@@ -13,13 +13,6 @@ from fastapi.testclient import TestClient
 # ── Fixture: test client with auth ────────────────────────────────────────────
 
 
-@pytest.fixture(autouse=True)
-def _mock_setup_complete():
-    """All dashboard tests assume setup is complete (no /setup redirect)."""
-    with patch("src.config.Settings.is_setup_complete", return_value=True):
-        yield
-
-
 @pytest.fixture
 def client():
     from src.dashboard.app import app

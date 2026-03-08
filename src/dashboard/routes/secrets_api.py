@@ -193,9 +193,6 @@ TEST_FUNCTIONS = {
 
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_wizard(request: Request, step: int = 1):
-    if settings.is_setup_complete():
-        return RedirectResponse("/settings", status_code=302)
-
     total_steps = len(SECRETS_SCHEMA)
     if step < 1:
         return RedirectResponse("/setup?step=1", status_code=302)

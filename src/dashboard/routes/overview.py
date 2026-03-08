@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
+from src.config import settings
 from src.dashboard.deps import templates, verify_credentials
 from src.db import SessionLocal
 
@@ -78,4 +79,5 @@ async def _get_overview_data() -> dict:
 @router.get("/", response_class=HTMLResponse)
 async def overview(request: Request, user: str = Depends(verify_credentials)):
     data = await _get_overview_data()
+    data["setup_needed"] = not settings.is_setup_complete()
     return templates.TemplateResponse("overview.html", {"request": request, **data})

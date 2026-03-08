@@ -151,11 +151,14 @@ class TestSetupWizard:
                 resp = client.get("/setup", cookies=auth_cookies)
         assert resp.status_code == 200
 
-    def test_setup_redirects_to_settings_when_configured(self, client, auth_cookies):
-        with patch("src.config.Settings.is_setup_complete", return_value=True):
-            resp = client.get("/setup", cookies=auth_cookies, follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/settings" in resp.headers.get("location", "")
+    def test_setup_always_accessible(self, client, auth_cookies):
+        """Setup wizard should be accessible even when secrets are configured."""
+        with (
+            patch("src.config.Settings.is_setup_complete", return_value=True),
+            patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}),
+        ):
+            resp = client.get("/setup", cookies=auth_cookies)
+        assert resp.status_code == 200
 
 
 class TestSettingsPage:
@@ -213,16 +216,25 @@ class TestSecretsTestEndpoint:
         assert "Connected" in resp.text
 
 
-class TestSetupRedirect:
-    """If secrets table is empty, redirect non-setup pages to /setup."""
+class TestSetupAccess:
+    """Dashboard always accessible. Setup wizard shows a banner, not a wall."""
 
-    def test_overview_redirects_when_not_configured(self, client, auth_cookies):
-        with patch("src.config.Settings.is_setup_complete", return_value=False):
-            resp = client.get("/", cookies=auth_cookies, follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/setup" in resp.headers.get("location", "")
+    def test_overview_accessible_without_secrets(self, client, auth_cookies):
+        """Overview should load even with no secrets configured (shows banner)."""
+        with (
+            patch("src.config.Settings.is_setup_complete", return_value=False),
+            patch("src.dashboard.routes.overview._get_overview_data", new_callable=AsyncMock, return_value={
+                "total_mrr": 0, "customers_active": 0, "customers_new_7d": 0,
+                "customers_churned_7d": 0, "leads_pipeline": 0,
+                "spend_today": 0, "spend_month": 0, "budget_daily": 50,
+                "agent_runs_today": 0, "agent_success_rate": 0, "agent_errors_today": 0,
+                "businesses": [], "improvements": [], "setup_needed": True,
+            }),
+        ):
+            resp = client.get("/", cookies=auth_cookies)
+        assert resp.status_code == 200
 
-    def test_setup_does_not_redirect(self, client, auth_cookies):
+    def test_setup_always_accessible(self, client, auth_cookies):
         with (
             patch("src.config.Settings.is_setup_complete", return_value=False),
             patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}),

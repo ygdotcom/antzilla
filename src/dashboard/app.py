@@ -34,7 +34,7 @@ if STATIC_DIR.exists():
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Redirect to /login if not authenticated. Then to /setup if not configured."""
+    """Redirect to /login if not authenticated."""
 
     async def dispatch(self, request, call_next):
         path = request.url.path
@@ -45,13 +45,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         user = get_current_user(request)
         if not user:
             return RedirectResponse("/login", status_code=302)
-
-        if not path.startswith(("/setup", "/api/secrets", "/logout")):
-            try:
-                if not settings.is_setup_complete():
-                    return RedirectResponse("/setup", status_code=302)
-            except Exception:
-                return RedirectResponse("/setup", status_code=302)
 
         return await call_next(request)
 
