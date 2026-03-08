@@ -98,10 +98,39 @@ app.include_router(secrets_api.router)
 
 @app.post("/trigger/{workflow_name}", response_class=HTMLResponse)
 async def trigger_workflow(request: Request, workflow_name: str, user: str = Depends(verify_credentials)):
-    """Queue a workflow for the factory worker to pick up."""
+    """Trigger a workflow via Hatchet SDK, with DB fallback."""
+    import os
     from sqlalchemy import text as sa_text
     from src.db import SessionLocal
     current = get_current_user(request)
+    triggered_by = current.get("username", "unknown") if current else "unknown"
+
+    # Try Hatchet SDK direct trigger
+    hatchet_token = os.environ.get("HATCHET_CLIENT_TOKEN", "")
+    if hatchet_token and len(hatchet_token) > 20:
+        try:
+            from hatchet_sdk import Hatchet
+            h = Hatchet()
+            wf = h.workflows.get(workflow_name)
+            if wf:
+                await wf.aio_run_no_wait({})
+                # Log the trigger
+                async with SessionLocal() as db:
+                    await db.execute(
+                        sa_text(
+                            "INSERT INTO workflow_triggers (workflow_name, status, triggered_by) "
+                            "VALUES (:wf, 'running', :user)"
+                        ),
+                        {"wf": workflow_name, "user": triggered_by},
+                    )
+                    await db.commit()
+                return HTMLResponse(
+                    f'<span class="text-brand text-sm font-medium">Running {workflow_name}</span>'
+                )
+        except Exception as exc:
+            logger.warning("hatchet_trigger_failed", workflow=workflow_name, error=str(exc))
+
+    # Fallback: queue in DB
     try:
         async with SessionLocal() as db:
             await db.execute(
@@ -109,11 +138,11 @@ async def trigger_workflow(request: Request, workflow_name: str, user: str = Dep
                     "INSERT INTO workflow_triggers (workflow_name, triggered_by) "
                     "VALUES (:wf, :user)"
                 ),
-                {"wf": workflow_name, "user": current.get("username", "unknown") if current else "unknown"},
+                {"wf": workflow_name, "user": triggered_by},
             )
             await db.commit()
         return HTMLResponse(
-            f'<span class="text-brand text-sm font-medium">Queued {workflow_name}</span>'
+            f'<span class="text-yellow-400 text-sm font-medium">Queued {workflow_name} (will run on next schedule)</span>'
         )
     except Exception as exc:
         return HTMLResponse(
