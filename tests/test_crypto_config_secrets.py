@@ -141,15 +141,15 @@ class TestSecretsSchema:
 
 
 class TestSetupWizard:
-    def test_setup_page_loads(self, client):
+    def test_setup_page_loads(self, client, auth_cookies):
         with patch("src.config.Settings.is_setup_complete", return_value=False):
             with patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}):
-                resp = client.get("/setup", )
+                resp = client.get("/setup", cookies=auth_cookies)
         assert resp.status_code == 200
 
-    def test_setup_redirects_to_settings_when_configured(self, client):
+    def test_setup_redirects_to_settings_when_configured(self, client, auth_cookies):
         with patch("src.config.Settings.is_setup_complete", return_value=True):
-            resp = client.get("/setup", follow_redirects=False)
+            resp = client.get("/setup", cookies=auth_cookies, follow_redirects=False)
         assert resp.status_code == 302
         assert "/settings" in resp.headers.get("location", "")
 
@@ -165,7 +165,7 @@ class TestSettingsPage:
 
 
 class TestSecretsSaveEndpoint:
-    def test_save_secret(self, client):
+    def test_save_secret(self, client, auth_cookies):
         os.environ["ENCRYPTION_KEY"] = "a" * 64
 
         mock_db = AsyncMock()
@@ -181,6 +181,7 @@ class TestSecretsSaveEndpoint:
             resp = client.post(
                 "/api/secrets/save",
                 json={"key": "TEST_KEY", "value": "test_value", "category": "core", "display_name": "Test"},
+                cookies=auth_cookies,
             )
         assert resp.status_code == 200
         assert "Saved" in resp.text
@@ -188,7 +189,7 @@ class TestSecretsSaveEndpoint:
 
 
 class TestSecretsTestEndpoint:
-    def test_test_generic_key(self, client):
+    def test_test_generic_key(self, client, auth_cookies):
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
@@ -202,6 +203,7 @@ class TestSecretsTestEndpoint:
             resp = client.post(
                 "/api/secrets/test",
                 json={"key": "SOME_API_KEY", "value": "a_long_enough_value_here"},
+                cookies=auth_cookies,
             )
         assert resp.status_code == 200
         assert "Connected" in resp.text
@@ -210,9 +212,9 @@ class TestSecretsTestEndpoint:
 class TestSetupRedirect:
     """If secrets table is empty, redirect non-setup pages to /setup."""
 
-    def test_overview_redirects_when_not_configured(self, client):
+    def test_overview_redirects_when_not_configured(self, client, auth_cookies):
         with patch("src.config.Settings.is_setup_complete", return_value=False):
-            resp = client.get("/", follow_redirects=False)
+            resp = client.get("/", cookies=auth_cookies, follow_redirects=False)
         assert resp.status_code == 302
         assert "/setup" in resp.headers.get("location", "")
 

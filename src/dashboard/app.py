@@ -35,29 +35,27 @@ if STATIC_DIR.exists():
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Redirect to /login if not authenticated. Redirect to /setup if not configured."""
+    """Redirect to /login if not authenticated. Then to /setup if not configured."""
 
     async def dispatch(self, request, call_next):
         path = request.url.path
-        public = path.startswith(("/login", "/static"))
 
-        if not public:
-            # Check setup first
-            if not path.startswith(("/setup", "/api/secrets")):
-                try:
-                    if not settings.is_setup_complete():
-                        # Allow setup pages without login
-                        if not path.startswith("/setup"):
-                            return RedirectResponse("/setup", status_code=302)
-                except Exception:
-                    if not path.startswith("/setup"):
-                        return RedirectResponse("/setup", status_code=302)
+        # Public paths — no auth needed
+        if path.startswith(("/login", "/static")):
+            return await call_next(request)
 
-            # Check auth (skip for setup and login)
-            if not path.startswith(("/setup", "/api/secrets")):
-                user = get_current_user(request)
-                if not user:
-                    return RedirectResponse("/login", status_code=302)
+        # Everything else requires login
+        user = get_current_user(request)
+        if not user:
+            return RedirectResponse("/login", status_code=302)
+
+        # After auth: redirect to /setup if factory not configured yet
+        if not path.startswith(("/setup", "/api/secrets", "/logout")):
+            try:
+                if not settings.is_setup_complete():
+                    return RedirectResponse("/setup", status_code=302)
+            except Exception:
+                return RedirectResponse("/setup", status_code=302)
 
         return await call_next(request)
 
@@ -78,8 +76,9 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
-    if check_password(username, password):
-        token = _sign_token(username)
+    user_info = check_password(username, password)
+    if user_info:
+        token = _sign_token(user_info["username"], user_info.get("role", "admin"))
         response = RedirectResponse("/", status_code=303)
         response.set_cookie(
             SESSION_COOKIE,

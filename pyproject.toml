@@ -12,9 +12,10 @@ dependencies = [
     "sqlalchemy[asyncio]",
     "asyncpg",
     "pgvector",
-    # Config + crypto
+    # Config + crypto + auth
     "pydantic",
     "cryptography",
+    "bcrypt",
     # HTTP
     "httpx",
     # Integrations

@@ -218,14 +218,35 @@ async def setup_wizard(request: Request, step: int = 1):
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, user: str = Depends(verify_credentials)):
+    from src.dashboard.deps import list_users, get_current_user
     configured = await _get_configured_keys()
+    team_members = await list_users()
+    current = get_current_user(request) or {}
 
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "steps": SECRETS_SCHEMA,
         "configured": configured,
         "budget_limit": settings.DAILY_BUDGET_LIMIT_USD,
+        "team_members": team_members,
+        "current_user_role": current.get("role", "admin"),
     })
+
+
+class InviteUserRequest(BaseModel):
+    email: str
+    name: str = ""
+    password: str
+    role: str = "viewer"
+
+
+@router.post("/api/team/invite", response_class=HTMLResponse)
+async def invite_user(req: InviteUserRequest, user: str = Depends(verify_credentials)):
+    from src.dashboard.deps import create_user
+    ok = await create_user(email=req.email, password=req.password, name=req.name, role=req.role)
+    if ok:
+        return HTMLResponse(f'<span class="text-green-400">Invited {req.email} as {req.role}</span>')
+    return HTMLResponse(f'<span class="text-red-400">Failed to invite {req.email}</span>')
 
 
 class SecretTestRequest(BaseModel):

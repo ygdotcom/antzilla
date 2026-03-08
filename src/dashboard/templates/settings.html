@@ -121,6 +121,75 @@
     </div>
   </div>
 
+  <!-- Team Members -->
+  <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="text-lg font-semibold text-white mb-1">Team</h3>
+    <p class="text-zinc-400 text-sm mb-6">Invite people to access the dashboard with different permission levels.</p>
+
+    {% if team_members %}
+    <div class="overflow-x-auto mb-6">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left text-zinc-400 font-medium px-3 py-2">Email</th>
+            <th class="text-left text-zinc-400 font-medium px-3 py-2">Name</th>
+            <th class="text-left text-zinc-400 font-medium px-3 py-2">Role</th>
+            <th class="text-left text-zinc-400 font-medium px-3 py-2">Last login</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in team_members %}
+          <tr class="border-b border-zinc-800/50">
+            <td class="px-3 py-2 text-white">{{ m.email }}</td>
+            <td class="px-3 py-2 text-zinc-300">{{ m.name or '—' }}</td>
+            <td class="px-3 py-2">
+              {% if m.role == 'admin' %}
+              <span class="px-2 py-0.5 rounded text-xs font-medium bg-violet-500/20 text-violet-400 border border-violet-500/30">admin</span>
+              {% elif m.role == 'operator' %}
+              <span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">operator</span>
+              {% else %}
+              <span class="px-2 py-0.5 rounded text-xs font-medium bg-zinc-700 text-zinc-400">viewer</span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2 text-zinc-500 text-xs">{{ m.last_login or 'Never' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- Invite form -->
+    {% if current_user_role == 'admin' %}
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Email</label>
+        <input id="invite-email" type="email" placeholder="team@company.com" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Name</label>
+        <input id="invite-name" type="text" placeholder="Optional" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Role</label>
+        <select id="invite-role" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+          <option value="viewer">Viewer — read-only</option>
+          <option value="operator">Operator — run agents, approve</option>
+          <option value="admin">Admin — full control</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Password</label>
+        <div class="flex gap-2">
+          <input id="invite-password" type="text" placeholder="Temp password" class="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+          <button type="button" onclick="inviteUser()" class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">Invite</button>
+        </div>
+      </div>
+    </div>
+    <div id="invite-status" class="mt-2 text-sm"></div>
+    {% endif %}
+  </div>
+
   <!-- Danger Zone -->
   <div class="bg-zinc-900 rounded-xl border-2 border-red-500/50 p-6">
     <h3 class="text-lg font-semibold text-red-400 mb-1">Danger Zone</h3>
@@ -203,6 +272,26 @@
       badge.innerHTML = await res.text();
     } catch (e) {
       badge.innerHTML = '<span class="text-red-400 text-xs">Error</span>';
+    }
+  }
+
+  async function inviteUser() {
+    const email = document.getElementById('invite-email').value;
+    const name = document.getElementById('invite-name').value;
+    const password = document.getElementById('invite-password').value;
+    const role = document.getElementById('invite-role').value;
+    const status = document.getElementById('invite-status');
+    if (!email || !password) { status.innerHTML = '<span class="text-red-400">Email and password required</span>'; return; }
+    try {
+      const res = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, name, password, role})
+      });
+      status.innerHTML = await res.text();
+      if (res.ok) { setTimeout(() => location.reload(), 1000); }
+    } catch (e) {
+      status.innerHTML = '<span class="text-red-400">Failed: ' + e.message + '</span>';
     }
   }
 

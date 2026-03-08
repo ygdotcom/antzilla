@@ -413,6 +413,19 @@ CREATE TABLE secrets (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ═══ DASHBOARD USERS (multi-user + roles) ═══
+
+CREATE TABLE dashboard_users (
+    id SERIAL PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    name TEXT,
+    role TEXT DEFAULT 'viewer' CHECK (role IN ('admin','operator','viewer')),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ═══ BRAND MENTIONS (reputation monitoring) ═══
 
 CREATE TABLE brand_mentions (
