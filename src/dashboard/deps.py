@@ -28,6 +28,25 @@ logger = structlog.get_logger()
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
+
+def _get_sidebar_businesses() -> list[dict]:
+    """Load businesses for sidebar — called from Jinja2 template."""
+    try:
+        import sqlalchemy
+        from src.config import DATABASE_URL
+        sync_url = DATABASE_URL.replace("+asyncpg", "")
+        engine = sqlalchemy.create_engine(sync_url)
+        with engine.connect() as conn:
+            rows = conn.execute(sqlalchemy.text(
+                "SELECT name, slug, status FROM businesses ORDER BY id DESC LIMIT 20"
+            )).fetchall()
+            return [{"name": r.name, "slug": r.slug, "status": r.status} for r in rows]
+    except Exception:
+        return []
+
+
+templates.env.globals["get_sidebar_businesses"] = _get_sidebar_businesses
+
 SESSION_COOKIE = "factory_session"
 SESSION_MAX_AGE = 86400 * 7  # 7 days
 

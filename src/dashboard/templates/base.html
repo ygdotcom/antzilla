@@ -37,21 +37,22 @@
       <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/' %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
         <span class="text-zinc-500">▸</span> Overview
       </a>
-      <a href="/businesses" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/businesses' or request.url.path.startswith('/business/') %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
-        <span class="text-zinc-500">▸</span> Businesses
-      </a>
-      {% if businesses %}
-      {% for b in businesses[:5] %}
-      <a href="/business/{{ b.slug }}" class="flex items-center gap-3 pl-8 pr-3 py-1.5 rounded-lg text-sm transition-colors {% if request.url.path == '/business/' ~ b.slug %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
-        {{ b.name }}
-      </a>
-      {% endfor %}
-      {% if businesses|length > 5 %}
-      <a href="/businesses" class="flex items-center gap-3 pl-8 pr-3 py-1.5 rounded-lg text-sm text-zinc-500 hover:text-zinc-400">
-        +{{ businesses|length - 5 }} more
-      </a>
-      {% endif %}
-      {% endif %}
+      {% set sidebar_biz = get_sidebar_businesses() %}
+      <div>
+        <button onclick="document.getElementById('biz-list').classList.toggle('hidden');this.querySelector('.biz-arrow').classList.toggle('rotate-90')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/businesses' or request.url.path.startswith('/business/') %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
+          <span class="biz-arrow text-zinc-500 transition-transform {% if request.url.path.startswith('/business') %}rotate-90{% endif %}">▸</span>
+          <a href="/businesses" class="flex-1 text-left">Businesses</a>
+          {% if sidebar_biz %}<span class="text-zinc-600 text-xs">{{ sidebar_biz|length }}</span>{% endif %}
+        </button>
+        <div id="biz-list" class="{% if not request.url.path.startswith('/business') %}hidden{% endif %} ml-2">
+          {% for b in sidebar_biz %}
+          <a href="/business/{{ b.slug }}" class="flex items-center gap-2 pl-6 pr-3 py-1.5 rounded-lg text-xs transition-colors {% if request.url.path == '/business/' ~ b.slug %}bg-zinc-800 text-white{% else %}text-zinc-500 hover:text-white hover:bg-zinc-900{% endif %}">
+            <span class="w-1.5 h-1.5 rounded-full {% if b.status == 'live' %}bg-green-500{% elif b.status == 'building' %}bg-yellow-500{% elif b.status == 'killed' %}bg-red-500{% else %}bg-zinc-600{% endif %}"></span>
+            {{ b.name }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
       <a href="/console" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/console' %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
         <span class="text-zinc-500">▸</span> Console
       </a>
