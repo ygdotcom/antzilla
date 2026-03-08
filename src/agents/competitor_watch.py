@@ -71,8 +71,10 @@ class CompetitorWatchAgent(BaseAgent):
                         text(
                             "SELECT result FROM agent_logs "
                             "WHERE agent_name = 'competitor_watch' AND action = 'log_report' "
+                            "AND business_id = :biz "
                             "AND status = 'success' ORDER BY created_at DESC LIMIT 1"
                         ),
+                        {"biz": biz["id"]},
                     )
                 ).fetchone()
 
@@ -111,7 +113,11 @@ class CompetitorWatchAgent(BaseAgent):
         return {"pricing_changes": pricing_changes}
 
     async def check_product_hunt(self, context) -> dict:
-        """Search for new launches in category (placeholder — would use Product Hunt API)."""
+        """Search for new launches in category — skipped if PRODUCT_HUNT_TOKEN not set."""
+        if not getattr(settings, "PRODUCT_HUNT_TOKEN", None):
+            logger.info("product_hunt_skipped", reason="PRODUCT_HUNT_TOKEN not configured")
+            return {"new_launches": []}
+
         businesses = await get_active_businesses()
         launches = []
         for biz in businesses:
@@ -119,7 +125,7 @@ class CompetitorWatchAgent(BaseAgent):
             if not playbook:
                 continue
             niche = playbook.get("icp", {}).get("niche", "") or playbook.get("product", {}).get("name", "")
-            if niche and getattr(settings, "PRODUCT_HUNT_TOKEN", None):
+            if niche:
                 try:
                     async with httpx.AsyncClient(timeout=10) as client:
                         resp = await client.post(

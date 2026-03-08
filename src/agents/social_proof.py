@@ -214,17 +214,33 @@ class SocialProof(BaseAgent):
 
             try:
                 async with httpx.AsyncClient(timeout=15) as client:
+                    gh_headers = {
+                        "Authorization": f"Bearer {settings.GITHUB_TOKEN}",
+                        "Accept": "application/vnd.github+json",
+                    }
+                    # Check if file exists to get its SHA (required for updates)
+                    existing_sha = None
+                    try:
+                        check_resp = await client.get(
+                            f"https://api.github.com/repos/{repo}/contents/testimonials.md",
+                            headers=gh_headers,
+                        )
+                        if check_resp.status_code == 200:
+                            existing_sha = check_resp.json().get("sha")
+                    except Exception:
+                        pass
+
                     encoded = base64.b64encode(section.encode()).decode()
                     payload = {
                         "message": "chore: add testimonial",
                         "content": encoded,
                     }
+                    if existing_sha:
+                        payload["sha"] = existing_sha
+
                     await client.put(
                         f"https://api.github.com/repos/{repo}/contents/testimonials.md",
-                        headers={
-                            "Authorization": f"Bearer {settings.GITHUB_TOKEN}",
-                            "Accept": "application/vnd.github+json",
-                        },
+                        headers=gh_headers,
                         json=payload,
                     )
                 published += 1
@@ -344,6 +360,7 @@ class SocialProof(BaseAgent):
 
 def register(hatchet_instance):
     agent = SocialProof()
+
     wf = hatchet_instance.workflow(name="social-proof")
 
     @wf.task(execution_timeout="5m", retries=1)
@@ -370,4 +387,27 @@ def register(hatchet_instance):
     async def update_aggregate_metrics(input, ctx):
         return await agent.update_aggregate_metrics(ctx)
 
-    return wf
+    # Monthly cron: collect + publish testimonials on the 1st of each month
+    wf_monthly = hatchet_instance.workflow(name="social-proof-monthly", on_crons=["0 10 1 * *"])
+
+    @wf_monthly.task(execution_timeout="5m", retries=1)
+    async def monthly_find_candidates(input, ctx):
+        return await agent.find_candidates(ctx)
+
+    @wf_monthly.task(execution_timeout="5m", retries=1)
+    async def monthly_send_testimonial_request(input, ctx):
+        return await agent.send_testimonial_request(ctx)
+
+    @wf_monthly.task(execution_timeout="3m", retries=1)
+    async def monthly_collect_response(input, ctx):
+        return await agent.collect_response(ctx)
+
+    @wf_monthly.task(execution_timeout="5m", retries=1)
+    async def monthly_publish_to_site(input, ctx):
+        return await agent.publish_to_site(ctx)
+
+    @wf_monthly.task(execution_timeout="3m", retries=1)
+    async def monthly_update_aggregate_metrics(input, ctx):
+        return await agent.update_aggregate_metrics(ctx)
+
+    return wf, wf_monthly

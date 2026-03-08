@@ -20,7 +20,6 @@ import pytest
 
 from src.agents.distribution.lead_pipeline import (
     LeadPipeline,
-    SOURCE_HANDLERS,
     _normalize,
 )
 
@@ -29,10 +28,9 @@ class TestLeadPipelineConfig:
     def test_agent_name(self):
         assert LeadPipeline().agent_name == "lead_pipeline"
 
-    def test_all_source_types_have_handlers(self):
-        required = ["google_maps", "rbq_registry", "req_registry", "federal_corp", "association_directory"]
-        for src in required:
-            assert src in SOURCE_HANDLERS, f"Missing handler for source: {src}"
+    def test_serper_based_lead_generation(self):
+        agent = LeadPipeline()
+        assert hasattr(agent, "generate_leads")
 
 
 class TestNormalize:
@@ -60,13 +58,13 @@ class TestLeadPipelineStep:
         assert result["total_leads"] == 0
 
     @pytest.mark.asyncio
-    async def test_google_maps_source(self):
-        from src.agents.distribution.lead_pipeline import _fetch_google_maps
+    async def test_serper_places_source(self):
+        from src.agents.distribution.lead_pipeline import _search_serper_places
         with patch("src.agents.distribution.lead_pipeline.serper") as mock_serper:
             mock_serper.search_maps = AsyncMock(return_value=[
-                {"name": "Toiture ABC", "phone": "+15145551234", "address": "123 Rue Test", "rating": 4.5, "reviews": 20, "website": "toitureabc.ca", "place_id": "ChIJ123"},
+                {"name": "Toiture ABC", "phone": "+15145551234", "address": "123 Rue Test, QC", "rating": 4.5, "reviews": 20, "website": "toitureabc.ca", "place_id": "ChIJ123"},
             ])
-            leads = await _fetch_google_maps({"query": "couvreur toiture", "geo": "QC"}, 1)
+            leads = await _search_serper_places([{"q": "couvreur toiture", "location": "QC", "num": 20}])
         assert len(leads) == 1
         assert leads[0]["source"] == "google_maps"
         assert leads[0]["consent_type"] == "conspicuous_publication"
@@ -348,9 +346,12 @@ class TestReplyRouting:
         mock_db.execute = AsyncMock()
         mock_db.commit = AsyncMock()
 
-        with patch("src.agents.distribution.reply_handler.SessionLocal", return_value=mock_db):
+        with (
+            patch("src.agents.distribution.reply_handler.SessionLocal", return_value=mock_db),
+            patch("src.agents.voice_agent.VoiceAgent", side_effect=ImportError),
+        ):
             await _route_positive_interested(1, 1)
-        mock_db.execute.assert_called_once()
+        assert mock_db.execute.call_count == 2  # update lead + log voice call
 
     @pytest.mark.asyncio
     async def test_not_interested_marks_lost(self):
@@ -386,11 +387,10 @@ class TestPlaybookDrivenDesign:
     """Key design: changing verticals = changing playbook config, NOT the code."""
 
     def test_lead_sources_read_from_playbook(self):
-        # The LeadPipeline reads lead_sources from playbook, not hardcoded
         import inspect
         source = inspect.getsource(LeadPipeline.generate_leads)
-        assert "lead_sources" in source
         assert "load_playbook" in source
+        assert "_build_search_queries" in source or "lead_sources" in source
 
     def test_signals_read_from_playbook(self):
         import inspect

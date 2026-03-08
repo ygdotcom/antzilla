@@ -95,12 +95,12 @@ class ReferralAgent(BaseAgent):
         """When NPS >= 9, immediately present referral invitation.
 
         This is the highest-conversion moment for referral asks.
+        Falls back to customers with 30+ days active when no NPS data exists.
         """
         input_data = context.workflow_input() if hasattr(context, "workflow_input") else {}
         business_id = input_data.get("business_id")
 
         async with SessionLocal() as db:
-            # Find customers with NPS >= 9 who haven't been asked yet
             customers = (
                 await db.execute(
                     text(
@@ -119,6 +119,28 @@ class ReferralAgent(BaseAgent):
                     {"threshold": NPS_THRESHOLD, "biz": business_id},
                 )
             ).fetchall()
+
+            # Fallback: if no NPS data, target customers active 30+ days
+            if not customers:
+                customers = (
+                    await db.execute(
+                        text(
+                            "SELECT c.id, c.name, c.email, c.phone, c.language, "
+                            "c.referral_code, c.nps_score, b.name AS biz_name, b.domain "
+                            "FROM customers c JOIN businesses b ON c.business_id = b.id "
+                            "WHERE c.created_at < NOW() - INTERVAL '30 days' "
+                            "AND c.status IN ('active', 'trial') "
+                            "AND c.business_id = COALESCE(:biz, c.business_id) "
+                            "AND c.referral_code IS NOT NULL "
+                            "AND NOT EXISTS ("
+                            "  SELECT 1 FROM referrals r WHERE r.referrer_customer_id = c.id "
+                            "  AND r.created_at > NOW() - INTERVAL '7 days'"
+                            ") "
+                            "ORDER BY c.created_at ASC LIMIT 20"
+                        ),
+                        {"biz": business_id},
+                    )
+                ).fetchall()
 
         if not customers:
             return {"invitations_sent": 0}
@@ -302,6 +324,7 @@ class ReferralAgent(BaseAgent):
 
 def register(hatchet_instance):
     agent = ReferralAgent()
+
     wf = hatchet_instance.workflow(name="referral-agent")
 
     @wf.task(execution_timeout="5m", retries=1)
@@ -320,4 +343,23 @@ def register(hatchet_instance):
     async def nudge_non_sharers(input, ctx):
         return await agent.nudge_non_sharers(ctx)
 
-    return wf
+    # Weekly cron: scan for referral candidates (NPS or 30+ day active fallback)
+    wf_cron = hatchet_instance.workflow(name="referral-agent-cron", on_crons=["0 15 * * 3"])
+
+    @wf_cron.task(execution_timeout="5m", retries=1)
+    async def cron_nps_trigger(input, ctx):
+        return await agent.nps_trigger(ctx)
+
+    @wf_cron.task(execution_timeout="5m", retries=1)
+    async def cron_track_and_reward(input, ctx):
+        return await agent.track_and_reward(ctx)
+
+    @wf_cron.task(execution_timeout="3m", retries=1)
+    async def cron_identify_ambassadors(input, ctx):
+        return await agent.identify_ambassadors(ctx)
+
+    @wf_cron.task(execution_timeout="5m", retries=1)
+    async def cron_nudge_non_sharers(input, ctx):
+        return await agent.nudge_non_sharers(ctx)
+
+    return wf, wf_cron

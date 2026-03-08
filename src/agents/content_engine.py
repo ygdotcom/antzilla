@@ -318,21 +318,40 @@ class ContentEngine(BaseAgent):
 
                     slug = title.lower().replace(" ", "-").replace("'", "")[:100]
                     async with SessionLocal() as db:
-                        await db.execute(
-                            text(
-                                "INSERT INTO content (business_id, type, title, slug, body, "
-                                "keywords, status, published_at) "
-                                "VALUES (:biz, 'landing_page', :title, :slug, :body, :kw, 'draft', NOW()) "
-                                "ON CONFLICT DO NOTHING"
-                            ),
-                            {
-                                "biz": biz["id"],
-                                "title": title,
-                                "slug": slug,
-                                "body": page_md,
-                                "kw": [title],
-                            },
-                        )
+                        try:
+                            await db.execute(
+                                text(
+                                    "INSERT INTO content (business_id, type, title, slug, body, "
+                                    "keywords, status, published_at) "
+                                    "VALUES (:biz, 'landing_page', :title, :slug, :body, :kw, 'draft', NOW()) "
+                                    "ON CONFLICT (business_id, slug) DO UPDATE SET "
+                                    "body = EXCLUDED.body, title = EXCLUDED.title, "
+                                    "keywords = EXCLUDED.keywords, published_at = NOW()"
+                                ),
+                                {
+                                    "biz": biz["id"],
+                                    "title": title,
+                                    "slug": slug,
+                                    "body": page_md,
+                                    "kw": [title],
+                                },
+                            )
+                        except Exception:
+                            await db.rollback()
+                            await db.execute(
+                                text(
+                                    "INSERT INTO content (business_id, type, title, slug, body, "
+                                    "keywords, status, published_at) "
+                                    "VALUES (:biz, 'landing_page', :title, :slug, :body, :kw, 'draft', NOW())"
+                                ),
+                                {
+                                    "biz": biz["id"],
+                                    "title": title,
+                                    "slug": slug,
+                                    "body": page_md,
+                                    "kw": [title],
+                                },
+                            )
                         await db.commit()
 
                     total_pages += 1

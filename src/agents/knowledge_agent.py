@@ -54,7 +54,8 @@ class KnowledgeAgent(BaseAgent):
                     text(
                         "SELECT e.business_id, e.experiment_name, e.variant_a, e.variant_b, "
                         "e.replies_a, e.replies_b, e.positive_replies_a, e.positive_replies_b, "
-                        "e.winner, e.sends_a, e.sends_b, b.niche "
+                        "e.winner, e.sends_a, e.sends_b, "
+                        "COALESCE(b.niche, b.slug, 'unknown') AS niche "
                         "FROM outreach_experiments e "
                         "JOIN businesses b ON e.business_id = b.id "
                         "WHERE e.winner IS NOT NULL "
@@ -99,7 +100,8 @@ class KnowledgeAgent(BaseAgent):
             channels = (
                 await db.execute(
                     text(
-                        "SELECT b.id AS biz_id, b.niche, l.source, "
+                        "SELECT b.id AS biz_id, COALESCE(b.niche, b.slug, 'unknown') AS niche, "
+                        "l.source, "
                         "COUNT(*) AS total_leads, "
                         "COUNT(*) FILTER (WHERE l.status = 'converted') AS converted, "
                         "COALESCE(SUM(bt.cost_usd), 0) AS total_cost "
@@ -107,7 +109,7 @@ class KnowledgeAgent(BaseAgent):
                         "JOIN businesses b ON l.business_id = b.id "
                         "LEFT JOIN budget_tracking bt ON bt.business_id = b.id "
                         "WHERE l.source IS NOT NULL "
-                        "GROUP BY b.id, b.niche, l.source "
+                        "GROUP BY b.id, COALESCE(b.niche, b.slug, 'unknown'), l.source "
                         "HAVING COUNT(*) >= 10"
                     )
                 )
@@ -148,7 +150,8 @@ class KnowledgeAgent(BaseAgent):
             ideas = (
                 await db.execute(
                     text(
-                        "SELECT i.id, i.name, i.score, i.scoring_details, i.niche, "
+                        "SELECT i.id, i.name, i.score, i.scoring_details, "
+                        "COALESCE(i.niche, 'unknown') AS niche, "
                         "b.mrr, b.customers_count, b.status, b.kill_score "
                         "FROM ideas i "
                         "JOIN businesses b ON b.idea_id = i.id "
@@ -183,13 +186,13 @@ class KnowledgeAgent(BaseAgent):
             churned = (
                 await db.execute(
                     text(
-                        "SELECT c.business_id, b.niche, "
+                        "SELECT c.business_id, COALESCE(b.niche, b.slug, 'unknown') AS niche, "
                         "COUNT(*) AS churned_count, "
                         "AVG(EXTRACT(EPOCH FROM (c.created_at - c.last_active_at)) / 86400) AS avg_inactive_days "
                         "FROM customers c "
                         "JOIN businesses b ON c.business_id = b.id "
                         "WHERE c.status = 'churned' "
-                        "GROUP BY c.business_id, b.niche "
+                        "GROUP BY c.business_id, COALESCE(b.niche, b.slug, 'unknown') "
                         "HAVING COUNT(*) >= 3"
                     )
                 )

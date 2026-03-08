@@ -191,22 +191,19 @@ class TestPhase3_Distribution:
 
     @pytest.mark.asyncio
     async def test_lead_pipeline_reads_playbook_sources(self):
-        from src.agents.distribution.lead_pipeline import LeadPipeline, SOURCE_HANDLERS
+        from src.agents.distribution.lead_pipeline import LeadPipeline, _build_search_queries
 
         agent = LeadPipeline()
         playbook = {
             "lead_sources": [
-                {"type": "google_maps", "query": "couvreur", "geo": "QC", "priority": 1},
-                {"type": "rbq_registry", "licence_type": "couvreur", "priority": 2},
+                {"query": "couvreur toiture", "geo": "QC", "priority": 1},
+                {"query": "plombier", "geo": "QC", "priority": 2},
             ],
         }
 
-        # Lead pipeline uses lead_sources from playbook, not hardcoded
-        sources = playbook.get("lead_sources", [])
-        sources.sort(key=lambda s: s.get("priority", 99))
-        assert len(sources) == 2
-        assert sources[0]["type"] == "google_maps"
-        assert "google_maps" in SOURCE_HANDLERS
+        queries = _build_search_queries(playbook)
+        assert len(queries) == 2
+        assert queries[0]["q"] == "couvreur toiture"
 
     @pytest.mark.asyncio
     async def test_enrichment_waterfall_stops_on_first_hit(self):
@@ -259,12 +256,16 @@ class TestPhase3_Distribution:
         mock_db.execute = AsyncMock()
         mock_db.commit = AsyncMock()
 
-        with patch("src.agents.distribution.reply_handler.SessionLocal", return_value=mock_db):
+        with (
+            patch("src.agents.distribution.reply_handler.SessionLocal", return_value=mock_db),
+            patch("src.agents.voice_agent.VoiceAgent", side_effect=ImportError),
+        ):
             await _route_positive_interested(1, 1)
 
-        # Should update lead to 'replied' (ready for Voice Agent warm call)
-        call_sql = mock_db.execute.call_args[0][0].text
-        assert "replied" in call_sql
+        # Should update lead to 'replied' AND log voice call queued
+        assert mock_db.execute.call_count == 2
+        first_call_sql = mock_db.execute.call_args_list[0][0][0].text
+        assert "replied" in first_call_sql
 
     @pytest.mark.asyncio
     async def test_voice_agent_blocks_cold_calls(self):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import httpx
 import structlog
 from sqlalchemy import text
 
@@ -103,14 +104,36 @@ async def add_to_internal_dncl(phone: str) -> None:
 
 
 async def _query_dncl_api(phone: str) -> dict:
-    """Query the national DNCL registry API.
+    """Query the national DNCL registry via CRTC web check.
 
-    In production: integrate with CRTC DNCL operator (Bell Canada).
+    Scrapes https://lnnte-dncl.gc.ca/en/Consumer/Check-your-registration
+    to verify if a number is registered on the DNCL.
+    If the API/site is unreachable, defaults to BLOCKING the call (safe default).
     Data must be refreshed every 31 days per CRTC rules.
     """
-    # Placeholder — in production, call the DNCL bulk lookup service
     logger.info("dncl_api_query", phone=phone[:7] + "...")
-    return {"on_dncl": False, "source": "api"}
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            resp = await client.post(
+                "https://lnnte-dncl.gc.ca/en/Consumer/Check-your-registration",
+                data={"PhoneNumber": phone.lstrip("+")},
+                headers={
+                    "User-Agent": "FactoryDNCLChecker/1.0",
+                    "Accept": "text/html",
+                },
+            )
+            resp.raise_for_status()
+            body = resp.text.lower()
+            if "is registered" in body or "est inscrit" in body:
+                return {"on_dncl": True, "source": "api"}
+            if "is not registered" in body or "n'est pas inscrit" in body:
+                return {"on_dncl": False, "source": "api"}
+            # Ambiguous response — block to be safe
+            logger.warning("dncl_api_ambiguous_response", phone=phone[:7] + "...")
+            return {"on_dncl": True, "source": "api_ambiguous"}
+    except Exception as exc:
+        logger.error("dncl_api_failed_blocking", phone=phone[:7] + "...", error=str(exc))
+        return {"on_dncl": True, "source": "api_error"}
 
 
 def _normalize_phone(phone: str) -> str:

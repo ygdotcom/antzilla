@@ -272,22 +272,55 @@ class BillingAgent(BaseAgent):
 
     async def pre_dunning_check(self, context) -> dict:
         """Daily cron: email customers 30/15/7 days before card expiry."""
-        async with SessionLocal() as db:
-            for days in PRE_DUNNING_DAYS:
-                expiring = (
-                    await db.execute(
-                        text(
-                            "SELECT c.id, c.name, c.email, c.phone, c.language "
-                            "FROM customers c "
-                            "WHERE c.status = 'active' "
-                            "AND c.stripe_customer_id IS NOT NULL"
-                        )
-                    )
-                ).fetchall()
-                # In production: check Stripe API for card expiry dates
-                # and send pre-dunning emails for cards expiring in {days} days
+        import stripe
 
-        return {"pre_dunning_checked": True, "intervals": PRE_DUNNING_DAYS}
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        notified = 0
+        now = datetime.now(timezone.utc)
+
+        async with SessionLocal() as db:
+            customers = (
+                await db.execute(
+                    text(
+                        "SELECT c.id, c.name, c.email, c.phone, c.language, c.stripe_customer_id "
+                        "FROM customers c "
+                        "WHERE c.status = 'active' "
+                        "AND c.stripe_customer_id IS NOT NULL"
+                    )
+                )
+            ).fetchall()
+
+        for cust in customers:
+            try:
+                payment_methods = stripe.PaymentMethod.list(
+                    customer=cust.stripe_customer_id, type="card"
+                )
+                for pm in payment_methods.data:
+                    exp_month = pm.card.exp_month
+                    exp_year = pm.card.exp_year
+                    exp_date = datetime(exp_year, exp_month, 1, tzinfo=timezone.utc)
+                    days_until_expiry = (exp_date - now).days
+
+                    for threshold in PRE_DUNNING_DAYS:
+                        if days_until_expiry <= threshold and days_until_expiry > max(0, threshold - 8):
+                            lang = cust.language or "fr"
+                            if lang == "fr":
+                                sms = f"Ta carte expire dans {days_until_expiry} jours. Mets-la à jour pour éviter une interruption."
+                            else:
+                                sms = f"Your card expires in {days_until_expiry} days. Update it to avoid service interruption."
+                            if cust.phone:
+                                await twilio_client.send_sms(to=cust.phone, body=sms)
+                            notified += 1
+                            break
+            except Exception as exc:
+                logger.warning("pre_dunning_stripe_error", customer_id=cust.id, error=str(exc))
+
+        await self.log_execution(
+            action="pre_dunning_check",
+            result={"notified": notified, "total_customers": len(customers)},
+        )
+
+        return {"pre_dunning_checked": True, "notified": notified, "intervals": PRE_DUNNING_DAYS}
 
 
 def register(hatchet_instance):

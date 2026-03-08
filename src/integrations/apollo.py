@@ -12,7 +12,7 @@ from src.config import settings
 
 logger = structlog.get_logger()
 
-_BASE_URL = "https://api.apollo.io/v1"
+_BASE_URL = "https://api.apollo.io/api/v1"
 
 
 async def enrich_person(*, name: str, company: str, domain: str | None = None) -> dict | None:
@@ -24,13 +24,14 @@ async def enrich_person(*, name: str, company: str, domain: str | None = None) -
         logger.warning("apollo_api_key_not_configured", msg="APOLLO_API_KEY not set")
         return None
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    headers = {"x-api-key": settings.APOLLO_API_KEY}
+    async with httpx.AsyncClient(timeout=15, headers=headers) as client:
         try:
             payload = {
-                "api_key": settings.APOLLO_API_KEY,
                 "first_name": name.split()[0] if name else "",
                 "last_name": " ".join(name.split()[1:]) if name and len(name.split()) > 1 else "",
                 "organization_name": company,
+                "reveal_personal_emails": True,
             }
             if domain:
                 payload["organization_domain"] = domain
@@ -58,10 +59,10 @@ async def search_people(*, domain: str, title_keywords: list[str] | None = None)
         logger.warning("apollo_api_key_not_configured", msg="APOLLO_API_KEY not set")
         return []
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    headers = {"x-api-key": settings.APOLLO_API_KEY}
+    async with httpx.AsyncClient(timeout=15, headers=headers) as client:
         try:
             payload = {
-                "api_key": settings.APOLLO_API_KEY,
                 "q_organization_domains": [domain],
             }
             if title_keywords:

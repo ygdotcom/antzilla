@@ -14,6 +14,7 @@ from sqlalchemy import text
 from src.agents.base_agent import BaseAgent
 from src.config import settings
 from src.db import SessionLocal
+from src.slack import send as slack_send
 
 logger = structlog.get_logger()
 
@@ -150,19 +151,36 @@ class OnboardingAgent(BaseAgent):
         triggered = 0
         for row in rows:
             logger.info("onboarding_aha_trigger_referral", customer_id=row.id)
-            if hasattr(self, "_hatchet_admin") and self._hatchet_admin:
-                try:
-                    await self._hatchet_admin.run_workflow(
-                        "referral-agent", {"business_id": row.business_id, "customer_id": row.id}
-                    )
-                    triggered += 1
-                    await self.log_execution(
-                        action="referral_triggered",
-                        result={"customer_id": row.id, "business_id": row.business_id},
-                        business_id=row.business_id,
-                    )
-                except Exception as exc:
-                    logger.warning("referral_trigger_failed", customer_id=row.id, error=str(exc))
+            try:
+                await slack_send(
+                    f":tada: Aha moment reached — customer {row.id} (business {row.business_id}). "
+                    f"Referral invite queued."
+                )
+                # Generate referral code inline if missing
+                async with SessionLocal() as db:
+                    cust = (
+                        await db.execute(
+                            text("SELECT referral_code FROM customers WHERE id = :id"),
+                            {"id": row.id},
+                        )
+                    ).fetchone()
+                    if cust and not cust.referral_code:
+                        from src.agents.referral_agent import generate_referral_code
+                        code = generate_referral_code()
+                        await db.execute(
+                            text("UPDATE customers SET referral_code = :code WHERE id = :id"),
+                            {"code": code, "id": row.id},
+                        )
+                        await db.commit()
+
+                triggered += 1
+                await self.log_execution(
+                    action="referral_triggered",
+                    result={"customer_id": row.id, "business_id": row.business_id},
+                    business_id=row.business_id,
+                )
+            except Exception as exc:
+                logger.warning("referral_trigger_failed", customer_id=row.id, error=str(exc))
 
         return {"triggered_referral": triggered > 0, "count": triggered}
 
@@ -240,6 +258,10 @@ class OnboardingStallCheckAgent(OnboardingAgent):
                 except Exception:
                     pass
 
+        if stalled:
+            await slack_send(
+                f":warning: Onboarding stall: {len(stalled)} customers stalled 24h+, {nudged} nudged."
+            )
         await self.log_execution(action="check_stalled", result={"stalled": len(stalled), "nudged": nudged})
         return {"stalled": len(stalled), "nudged": nudged}
 

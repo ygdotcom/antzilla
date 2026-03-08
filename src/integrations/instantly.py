@@ -126,3 +126,57 @@ async def create_campaign(
         except Exception as exc:
             logger.error("instantly_campaign_failed", name=name, error=str(exc))
             return {"campaign_id": None, "success": False, "error": str(exc)}
+
+
+async def add_leads_to_campaign(*, campaign_id: str, leads: list[dict]) -> dict:
+    """Add leads to an Instantly campaign. Each lead: {"email": ..., "first_name": ..., "company_name": ...}"""
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.post(
+                f"{_BASE}/lead/add",
+                params=_params(),
+                json={
+                    "campaign_id": campaign_id,
+                    "skip_if_in_workspace": True,
+                    "leads": leads,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            logger.info("instantly_leads_added", campaign=campaign_id, count=len(leads))
+            return {"added": len(leads), "success": True}
+        except Exception as exc:
+            logger.error("instantly_add_leads_failed", error=str(exc))
+            return {"added": 0, "success": False, "error": str(exc)}
+
+
+async def get_campaign_replies(campaign_id: str) -> list[dict]:
+    """Get replies for a campaign."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.get(
+                f"{_BASE}/unibox/emails",
+                params={**_params(), "campaign_id": campaign_id, "email_type": "received"},
+            )
+            resp.raise_for_status()
+            return resp.json().get("data", [])
+        except Exception as exc:
+            logger.warning("instantly_get_replies_failed", error=str(exc))
+            return []
+
+
+async def send_email(*, to_email: str, subject: str, body: str, from_email: str = "",
+                     campaign_id: str = "") -> dict:
+    """Send a single email via Instantly (add as lead to campaign)."""
+    if not campaign_id:
+        return {"success": False, "error": "campaign_id required"}
+
+    result = await add_leads_to_campaign(
+        campaign_id=campaign_id,
+        leads=[{
+            "email": to_email,
+            "first_name": to_email.split("@")[0],
+            "custom_variables": {"subject_override": subject, "body_override": body},
+        }],
+    )
+    return {"success": result.get("success", False), "method": "instantly_campaign"}

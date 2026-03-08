@@ -58,6 +58,7 @@ def main():
     from src.agents.knowledge_agent import register as register_knowledge
     from src.agents.design_qa import register as register_design_qa
     from src.agents.copywriter import register as register_copywriter
+    from src.agents.infra_setup import register as register_infra_setup
 
     workflows = []
 
@@ -109,6 +110,7 @@ def main():
     workflows.append(register_knowledge(hatchet))
     workflows.append(register_design_qa(hatchet))
     workflows.append(register_copywriter(hatchet))
+    workflows.append(register_infra_setup(hatchet))
 
     # Flatten any tuples from register() calls that return multiple workflows
     flat = []

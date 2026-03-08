@@ -145,24 +145,65 @@ YOU SHOULD REPLACE:
 
 YOU SHOULD CREATE:
 - src/app/brand.css (CSS variable overrides from brand kit — imported by page.tsx)
-- Business-specific pages (e.g., src/app/[locale]/dashboard/receipts/page.tsx)
-- Business-specific components (e.g., src/components/receipt-upload.tsx)
-- messages/en.json and messages/fr.json (complete, with real copy for the niche)
+- Business-specific pages with REAL functionality
+- Business-specific components with REAL Supabase CRUD
+- Supabase migration: 002_business_tables.sql with business-specific tables
 
-LANDING PAGE REQUIREMENTS:
-- Hero: compelling headline addressing the ICP's #1 pain point
-- Social proof section (placeholder logos OK, but styled professionally)
-- 3 feature cards with lucide-react icons and real descriptions
-- "How it works" section with 3 numbered steps
-- Pricing preview
-- Final CTA with trust signals (no credit card, 14-day trial, cancel anytime)
+SUPABASE IS PRE-CONFIGURED. Use these imports:
+- Client components: import { createClient } from '@/lib/supabase/client'
+- Server components: import { createClient } from '@/lib/supabase/server'
+- The DB already has: profiles, projects, subscriptions, referrals tables
+- Auth is already set up — use supabase.auth.getUser() to check login
 
-DASHBOARD REQUIREMENTS:
-- Pre-populated with sample data (NEVER empty on first login)
-- Clean data table or card grid showing the core entities
-- Stats cards at the top (4 metrics)
-- Action button to create new items
-- Uses brand kit colors throughout
+THE APP MUST BE A REAL WORKING PRODUCT, NOT A MARKETING SITE.
+
+LANDING PAGE:
+- Hero with compelling headline addressing the ICP's #1 pain
+- 3 feature cards with lucide-react icons
+- "How it works" 3-step section
+- Pricing preview (3 tiers: Free $0, Pro $49, Business $99 CAD)
+- CTA with trust signals
+
+DASHBOARD (the actual product — THIS IS THE CORE):
+- Server component that fetches real data from Supabase
+- Pre-populated with sample data on first login (the trigger in 001_init.sql handles this)
+- Stats cards showing real metrics (count from DB)
+- Data table or card grid showing the core business entities
+- CREATE form/modal to add new items (use Server Actions or client-side Supabase)
+- EDIT and DELETE functionality on each item
+- All mutations go through Supabase client
+
+BUSINESS-SPECIFIC CRUD (REQUIRED):
+- Identify the ONE core entity for this business (e.g., receipts, contracts, invoices)
+- Create a migration 002_business_tables.sql with the table for this entity
+  - Must have: id UUID, user_id UUID REFERENCES auth.users, + business fields
+  - Must have: ALTER TABLE ... ENABLE ROW LEVEL SECURITY
+  - Must have: CREATE POLICY ... USING (auth.uid() = user_id)
+- Create a dashboard page that lists these entities
+- Create a form to add/edit them
+- Create Server Actions or API routes for mutations
+- Example for a receipt tracker:
+  - Table: receipts (id, user_id, vendor, amount, tax_type, category, receipt_date, created_at)
+  - Dashboard: list receipts, filter by category, show totals
+  - Form: add receipt with vendor, amount, tax type (GST/HST/PST), category
+  - Stats: total expenses, tax breakdown, monthly trend
+
+SERVER ACTIONS PATTERN (use this for mutations):
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+
+export async function createItem(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  await supabase.from('items').insert({
+    user_id: user.id,
+    name: formData.get('name'),
+    // ... other fields
+  })
+  revalidatePath('/dashboard')
+}
 
 OUTPUT FORMAT — respond ONLY with valid JSON:
 {

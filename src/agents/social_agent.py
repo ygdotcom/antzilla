@@ -120,13 +120,16 @@ class AntiBanGuardrails:
 
 async def _fetch_syften_alerts(keywords: list[str]) -> list[dict]:
     """Fetch keyword alerts from Syften.com monitoring service."""
-    # Syften API integration — returns community mentions matching keywords
-    # In production: poll Syften API or process webhook payloads
+    syften_key = getattr(settings, "SYFTEN_API_KEY", None)
+    if not syften_key:
+        logger.info("syften_fetch_skipped", reason="SYFTEN_API_KEY not configured")
+        return []
+
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             resp = await client.get(
                 "https://syften.com/api/v1/alerts",
-                headers={"Authorization": f"Bearer {settings.SLACK_WEBHOOK_URL}"},
+                headers={"Authorization": f"Bearer {syften_key}"},
                 params={"keywords": ",".join(keywords[:10])},
             )
             if resp.status_code == 200:

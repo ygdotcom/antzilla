@@ -86,7 +86,7 @@ class UpsellAgent(BaseAgent):
         if not candidates:
             return {"offers": []}
 
-        model = await self.check_budget()
+        model_tier = await self.check_budget()
         offers = []
         for c in candidates[:10]:
             lang = c["language"]
@@ -97,7 +97,7 @@ class UpsellAgent(BaseAgent):
                 f"Si power_referrer: mentionne un avantage ambassadeur."
             )
             user = json.dumps({"customer": c})
-            response, cost = await call_claude(model_tier=model, system=system, user=user)
+            response, cost = await call_claude(model_tier=model_tier, system=system, user=user)
             offers.append(
                 {"customer_id": c["id"], "email": c["email"], "body": response.strip(), "language": lang}
             )

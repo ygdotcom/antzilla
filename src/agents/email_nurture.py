@@ -70,14 +70,8 @@ class EmailNurture(BaseAgent):
     agent_name = "email_nurture"
     default_model = "haiku"
 
-    async def identify_recipients(self, context) -> dict:
-        """Query customers by sequence type."""
-        input_data = context.workflow_input() if hasattr(context, "workflow_input") else {}
-        sequence_type = input_data.get("sequence_type", "newsletter")
-        businesses = await get_active_businesses()
-        if not businesses:
-            return {"recipients": [], "sequence_type": sequence_type}
-
+    async def _query_recipients_for_type(self, sequence_type: str, businesses: list[dict]) -> list[dict]:
+        """Query customers for a single sequence type across businesses."""
         recipients = []
         for biz in businesses:
             async with SessionLocal() as db:
@@ -141,7 +135,31 @@ class EmailNurture(BaseAgent):
                         "language": r.language or "fr",
                         "business_id": biz["id"],
                         "business_name": biz["name"],
+                        "sequence_type": sequence_type,
                     })
+        return recipients
+
+    async def identify_recipients(self, context) -> dict:
+        """Query customers by sequence type. From cron (no input), process ALL types."""
+        input_data = context.workflow_input() if hasattr(context, "workflow_input") else {}
+        sequence_type = input_data.get("sequence_type")
+        businesses = await get_active_businesses()
+        if not businesses:
+            return {"recipients": [], "sequence_type": sequence_type or "all"}
+
+        if sequence_type:
+            # Explicit type from event trigger
+            recipients = await self._query_recipients_for_type(sequence_type, businesses)
+        else:
+            # Cron trigger: process ALL sequence types
+            recipients = []
+            seen_ids: set[int] = set()
+            for st in SEQUENCES:
+                for r in await self._query_recipients_for_type(st, businesses):
+                    if r["id"] not in seen_ids:
+                        recipients.append(r)
+                        seen_ids.add(r["id"])
+            sequence_type = "all"
 
         await self.log_execution(
             action="identify_recipients",
@@ -165,8 +183,9 @@ class EmailNurture(BaseAgent):
         total_cost = 0.0
         for rec in recipients[:20]:
             model_tier = await self.check_budget()
+            rec_sequence = rec.get("sequence_type", sequence_type)
             user_prompt = json.dumps({
-                "sequence_type": sequence_type,
+                "sequence_type": rec_sequence,
                 "customer_name": rec["name"],
                 "language": rec["language"],
                 "business_name": rec["business_name"],

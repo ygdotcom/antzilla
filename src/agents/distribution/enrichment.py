@@ -162,6 +162,7 @@ class EnrichmentAgent(BaseAgent):
                 query = text(
                     "SELECT id, business_id, name, company, phone, enrichment_data "
                     "FROM leads WHERE business_id = :biz AND status = 'new' "
+                    "AND (email IS NULL OR email = '') "
                     "ORDER BY created_at DESC LIMIT 100"
                 )
                 rows = (await db.execute(query, {"biz": business_id})).fetchall()
@@ -169,6 +170,7 @@ class EnrichmentAgent(BaseAgent):
                 query = text(
                     "SELECT id, business_id, name, company, phone, enrichment_data "
                     "FROM leads WHERE status = 'new' "
+                    "AND (email IS NULL OR email = '') "
                     "ORDER BY created_at DESC LIMIT 200"
                 )
                 rows = (await db.execute(query)).fetchall()
@@ -250,7 +252,7 @@ class EnrichmentAgent(BaseAgent):
                         "phone = COALESCE(:phone, phone), "
                         "score = :score, "
                         "enrichment_data = :enrich, "
-                        "enrichment_sources = :sources, "
+                        "enrichment_sources = :sources::text[], "
                         "status = 'enriched' "
                         "WHERE id = :id"
                     ),
@@ -280,7 +282,7 @@ class EnrichmentAgent(BaseAgent):
 
 def register(hatchet_instance):
     agent = EnrichmentAgent()
-    wf = hatchet_instance.workflow(name="enrichment-agent")
+    wf = hatchet_instance.workflow(name="enrichment-agent", on_crons=["0 12 * * *"])
 
     @wf.task(execution_timeout="25m", retries=1)
     async def enrich_leads(input, ctx):

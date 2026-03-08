@@ -45,29 +45,47 @@ CHURN_SIGNALS = {
 
 
 async def _search_knowledge_base(db, business_id: int, query: str, limit: int = 5) -> list[dict]:
-    """Search the knowledge base using keyword matching.
-
-    In production with populated embeddings, use vector similarity:
-    ORDER BY embedding <=> $query_embedding LIMIT $limit
-    """
+    """Search the knowledge base using Claude Haiku for relevance ranking."""
     rows = (
         await db.execute(
             text(
                 "SELECT title, content, source FROM knowledge_base "
                 "WHERE business_id = :biz "
-                "AND (content ILIKE :q1 OR title ILIKE :q2) "
-                "ORDER BY created_at DESC LIMIT :limit"
+                "ORDER BY created_at DESC LIMIT :candidate_limit"
             ),
-            {
-                "biz": business_id,
-                "q1": f"%{query[:50]}%",
-                "q2": f"%{query[:50]}%",
-                "limit": limit,
-            },
+            {"biz": business_id, "candidate_limit": limit * 4},
         )
     ).fetchall()
 
-    return [{"title": r.title, "content": r.content[:500], "source": r.source} for r in rows]
+    if not rows:
+        return []
+
+    candidates = [{"i": i, "title": r.title, "snippet": r.content[:200]} for i, r in enumerate(rows)]
+    try:
+        response, _ = await call_claude(
+            model_tier="haiku",
+            system=(
+                "Return a JSON array of the indices (integers) of the most relevant "
+                "knowledge base articles for the customer question. Max 5 indices. "
+                "Output ONLY the JSON array, nothing else."
+            ),
+            user=json.dumps({"question": query[:200], "articles": candidates}),
+            max_tokens=100,
+            temperature=0.0,
+        )
+        indices = json.loads(response.strip())
+        if isinstance(indices, list):
+            results = []
+            for i in indices:
+                if isinstance(i, int) and 0 <= i < len(rows):
+                    r = rows[i]
+                    results.append({"title": r.title, "content": r.content[:500], "source": r.source})
+            if results:
+                return results[:limit]
+    except Exception:
+        logger.debug("kb_claude_ranking_failed", fallback="recent")
+
+    return [{"title": r.title, "content": r.content[:500], "source": r.source} for r in rows[:limit]]
 
 
 class SupportAgent(BaseAgent):

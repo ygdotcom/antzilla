@@ -66,7 +66,7 @@ CONFIDENCE_THRESHOLD = 0.80
 
 
 async def _route_positive_interested(lead_id: int, business_id: int) -> None:
-    """Update lead to 'replied' and flag for Voice Agent warm call."""
+    """Update lead to 'replied' and trigger Voice Agent for warm call."""
     async with SessionLocal() as db:
         await db.execute(
             text(
@@ -74,8 +74,42 @@ async def _route_positive_interested(lead_id: int, business_id: int) -> None:
             ),
             {"id": lead_id},
         )
+        # Queue voice call
+        await db.execute(
+            text(
+                "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                "VALUES ('reply_handler', 'voice_call_queued', :result, 'success', :biz)"
+            ),
+            {"result": json.dumps({"lead_id": lead_id}), "biz": business_id},
+        )
         await db.commit()
-    logger.info("reply_positive_interested", lead_id=lead_id, action="route_to_voice_agent")
+
+    # Trigger voice agent inline
+    try:
+        from src.agents.voice_agent import VoiceAgent
+
+        class _VoiceCtx:
+            def __init__(self, lid, bid):
+                self._input = {"lead_id": lid, "business_id": bid, "call_type": "warm_intro"}
+                self._outputs = {}
+            def workflow_input(self):
+                return self._input
+            def step_output(self, name):
+                return self._outputs.get(name, {})
+
+        va = VoiceAgent()
+        ctx = _VoiceCtx(lead_id, business_id)
+        prep = await va.prepare_call(ctx)
+        ctx._outputs["prepare_call"] = prep
+        compliance = await va.check_compliance(ctx)
+        ctx._outputs["check_compliance"] = compliance
+        if compliance.get("approved"):
+            call_result = await va.make_call(ctx)
+            ctx._outputs["make_call"] = call_result
+            await va.classify_outcome(ctx)
+        logger.info("voice_call_triggered", lead_id=lead_id)
+    except Exception as exc:
+        logger.warning("voice_trigger_failed", lead_id=lead_id, error=str(exc))
 
 
 async def _route_question(lead_id: int, business_id: int) -> None:
@@ -173,11 +207,34 @@ class ReplyHandler(BaseAgent):
                           "negative_not_interested": 0, "objection": 0,
                           "ooo_autoresponder": 0, "unsubscribe": 0, "other": 0}
 
+        # Poll Instantly for reply data
+        reply_cache: dict[str, str] = {}
+        try:
+            from src.integrations.instantly import get_campaign_replies
+            instantly_key = settings.get("INSTANTLY_API_KEY")
+            if instantly_key:
+                async with SessionLocal() as db:
+                    campaigns = (await db.execute(text(
+                        "SELECT DISTINCT config->>'instantly_campaign_id' AS cid "
+                        "FROM businesses WHERE config->>'instantly_campaign_id' IS NOT NULL"
+                    ))).fetchall()
+                for camp in campaigns:
+                    if camp.cid:
+                        replies = await get_campaign_replies(camp.cid)
+                        for r in replies:
+                            email = r.get("from_email", r.get("from", ""))
+                            body = r.get("body", r.get("text", ""))
+                            if email and body:
+                                reply_cache[email.lower()] = body
+        except Exception as exc:
+            logger.warning("instantly_reply_fetch_failed", error=str(exc))
+
         for lead in leads:
-            # In production, fetch actual reply text from Instantly webhook data
-            # For now, use a placeholder that the workflow_input provides
-            input_data = context.workflow_input() if hasattr(context, "workflow_input") else {}
-            reply_text = input_data.get("reply_text", "")
+            reply_text = reply_cache.get((lead.email or "").lower(), "")
+            if not reply_text:
+                # Fallback: check workflow_input for manually provided reply
+                input_data = context.workflow_input() if hasattr(context, "workflow_input") else {}
+                reply_text = input_data.get("reply_text", "")
             if not reply_text:
                 continue
 

@@ -1,18 +1,17 @@
 """Sub-agent 12a: Lead Pipeline.
 
-Daily cron per active business.  Reads `gtm_playbooks.lead_sources` and
-generates leads from configured sources in priority order:
-Google Maps (Serper), RBQ, REQ, Federal Corp, association directories.
+Daily cron per active business. Reads `gtm_playbooks` config and generates
+leads via Serper Places API (Google Maps), derived from the ICP description.
 
-Deduplicates against existing leads via fuzzy name+address matching.
+Deduplicates against existing leads via fuzzy name matching before insert.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 
-import httpx
 import structlog
 from sqlalchemy import text
 
@@ -29,173 +28,119 @@ def _normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
 
 
-async def _check_duplicate(db, business_id: int, name: str, address: str | None) -> bool:
-    """Check if a lead with a similar name already exists for this business."""
-    norm_name = _normalize(name)
-    if not norm_name:
-        return False
-    row = (
-        await db.execute(
-            text(
-                "SELECT id FROM leads "
-                "WHERE business_id = :biz AND LOWER(REPLACE(name, '''', '')) ILIKE :pattern "
-                "LIMIT 1"
-            ),
-            {"biz": business_id, "pattern": f"%{norm_name[:30]}%"},
-        )
-    ).fetchone()
-    return row is not None
+def _build_search_queries(playbook: dict) -> list[dict]:
+    """Derive Serper Places search queries from the GTM playbook.
+
+    Returns a list of {"q": ..., "location": ...} dicts.
+    """
+    queries: list[dict] = []
+
+    lead_sources = playbook.get("lead_sources", [])
+    lead_sources.sort(key=lambda s: s.get("priority", 99))
+    for src in lead_sources:
+        q = src.get("query", "")
+        if q:
+            queries.append({
+                "q": q,
+                "location": src.get("geo", src.get("location", "Canada")),
+                "num": src.get("num", 20),
+            })
+
+    if not queries:
+        icp = playbook.get("icp", {})
+        icp_desc = icp.get("description", "") if isinstance(icp, dict) else str(icp)
+        industry = playbook.get("industry", "")
+        vertical = playbook.get("vertical", "")
+        search_term = icp_desc or industry or vertical
+        if search_term:
+            queries.append({
+                "q": search_term,
+                "location": playbook.get("geo", "Canada"),
+                "num": 20,
+            })
+
+    return queries
 
 
-async def _fetch_google_maps(source_cfg: dict, business_id: int) -> list[dict]:
-    """Fetch leads from Google Maps via Serper API."""
-    query = source_cfg.get("query", "")
-    geo = source_cfg.get("geo", "Quebec, Canada")
-    if not query:
-        return []
+async def _search_serper_places(queries: list[dict]) -> list[dict]:
+    """Call Serper Places API for each query and return parsed leads."""
+    all_leads: list[dict] = []
+    seen_names: set[str] = set()
 
-    results = await serper.search_maps(query, geo, num=40)
-    leads = []
-    for r in results:
-        leads.append({
-            "name": r.get("name", ""),
-            "phone": r.get("phone"),
-            "company": r.get("name", ""),
-            "source": "google_maps",
-            "source_url": f"https://maps.google.com/?q={query}",
-            "consent_type": "conspicuous_publication",
-            "enrichment_data": json.dumps({
-                "address": r.get("address"),
-                "rating": r.get("rating"),
-                "reviews": r.get("reviews"),
-                "website": r.get("website"),
-                "place_id": r.get("place_id"),
-            }),
-        })
-    return leads
+    for qcfg in queries:
+        q = qcfg["q"]
+        location = qcfg.get("location", "Canada")
+        num = qcfg.get("num", 20)
 
+        results = await serper.search_maps(q, location, num=num)
 
-async def _fetch_rbq(source_cfg: dict, business_id: int) -> list[dict]:
-    """Fetch leads from RBQ open data (Quebec contractor licences)."""
-    licence_type = source_cfg.get("licence_type", "")
-    async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            resp = await client.get(
-                "https://www.donneesquebec.ca/recherche/dataset/rbq-repertoire-titulaires-licence",
-                headers={"User-Agent": "FactoryBot/1.0"},
-                follow_redirects=True,
-            )
-            if resp.status_code != 200:
-                return []
-            # Parse CSV data — in production, download the actual CSV
-            # For now return structured placeholder
-            logger.info("rbq_fetch", licence_type=licence_type, status="csv_parsing_needed")
-            return []
-        except Exception as exc:
-            logger.warning("rbq_fetch_failed", error=str(exc))
-            return []
+        for r in results:
+            name = r.get("name", "").strip()
+            if not name:
+                continue
+            norm = _normalize(name)
+            if norm in seen_names:
+                continue
+            seen_names.add(norm)
+
+            address = r.get("address", "")
+            province = _extract_province(address)
+
+            all_leads.append({
+                "name": name,
+                "company": name,
+                "phone": r.get("phone", "") or None,
+                "address": address or None,
+                "source": "google_maps",
+                "source_url": f"https://maps.google.com/?q={urllib.parse.quote_plus(name + ' ' + address)}",
+                "consent_type": "conspicuous_publication",
+                "province": province,
+                "enrichment_data": json.dumps({
+                    "address": address,
+                    "rating": r.get("rating"),
+                    "reviews": r.get("reviews"),
+                    "website": r.get("website"),
+                    "place_id": r.get("place_id"),
+                    "search_query": q,
+                }),
+            })
+
+    return all_leads
 
 
-async def _fetch_req(source_cfg: dict, business_id: int) -> list[dict]:
-    """Fetch new business registrations from REQ (Registraire des entreprises du Québec)."""
-    naics = source_cfg.get("naics", "")
-    async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            resp = await client.get(
-                "https://www.registreentreprises.gouv.qc.ca/RQAnonymousWebAPI/api/recherche",
-                params={"motsCles": naics, "typeRecherche": "NAICS"},
-                headers={"User-Agent": "FactoryBot/1.0"},
-                follow_redirects=True,
-            )
-            if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
-                data = resp.json()
-                return [
-                    {
-                        "name": entry.get("nom", ""),
-                        "company": entry.get("nom", ""),
-                        "source": "req_registry",
-                        "source_url": "registreentreprises.gouv.qc.ca",
-                        "consent_type": "conspicuous_publication",
-                    }
-                    for entry in (data if isinstance(data, list) else data.get("resultats", []))[:50]
-                ]
-            return []
-        except Exception as exc:
-            logger.warning("req_fetch_failed", error=str(exc))
-            return []
-
-
-async def _fetch_federal_corp(source_cfg: dict, business_id: int) -> list[dict]:
-    """Fetch from Federal Corporation API (Canada API Store — free)."""
-    keywords = source_cfg.get("keywords", source_cfg.get("query", ""))
-    async with httpx.AsyncClient(timeout=15) as client:
-        try:
-            resp = await client.get(
-                "https://corporations.ic.gc.ca/copo/api/v1/search",
-                params={"q": keywords, "status": "Active"},
-                headers={"User-Agent": "FactoryBot/1.0"},
-                follow_redirects=True,
-            )
-            if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
-                data = resp.json()
-                corps = data if isinstance(data, list) else data.get("corporations", [])
-                return [
-                    {
-                        "name": c.get("corporationName", ""),
-                        "company": c.get("corporationName", ""),
-                        "source": "federal_corp",
-                        "source_url": "corporations.ic.gc.ca",
-                        "consent_type": "conspicuous_publication",
-                    }
-                    for c in corps[:30]
-                ]
-            return []
-        except Exception as exc:
-            logger.warning("federal_corp_failed", error=str(exc))
-            return []
-
-
-async def _fetch_association(source_cfg: dict, business_id: int) -> list[dict]:
-    """Scrape association member directory."""
-    url = source_cfg.get("url", "")
-    org = source_cfg.get("org", "")
-    if not url:
-        return []
-    async with httpx.AsyncClient(timeout=15) as client:
-        try:
-            resp = await client.get(
-                f"https://{url}" if not url.startswith("http") else url,
-                headers={"User-Agent": "FactoryBot/1.0"},
-                follow_redirects=True,
-            )
-            # In production: parse HTML member listings
-            logger.info("association_scrape", org=org, status_code=resp.status_code)
-            return []
-        except Exception as exc:
-            logger.warning("association_scrape_failed", org=org, error=str(exc))
-            return []
-
-
-SOURCE_HANDLERS = {
-    "google_maps": _fetch_google_maps,
-    "rbq_registry": _fetch_rbq,
-    "req_registry": _fetch_req,
-    "federal_corp": _fetch_federal_corp,
-    "association_directory": _fetch_association,
-    "industry_directory": _fetch_association,
+_CA_PROVINCES = {
+    "AB": "AB", "BC": "BC", "MB": "MB", "NB": "NB",
+    "NL": "NL", "NS": "NS", "NT": "NT", "NU": "NU",
+    "ON": "ON", "PE": "PE", "QC": "QC", "SK": "SK", "YT": "YT",
+    "ALBERTA": "AB", "BRITISH COLUMBIA": "BC", "MANITOBA": "MB",
+    "NEW BRUNSWICK": "NB", "NEWFOUNDLAND": "NL", "NOVA SCOTIA": "NS",
+    "ONTARIO": "ON", "QUEBEC": "QC", "QUÉBEC": "QC",
+    "SASKATCHEWAN": "SK", "PRINCE EDWARD ISLAND": "PE",
 }
 
 
+def _extract_province(address: str) -> str | None:
+    """Best-effort province extraction from a Google Maps address string."""
+    if not address:
+        return None
+    upper = address.upper()
+    for token, code in _CA_PROVINCES.items():
+        if token in upper:
+            return code
+    return None
+
+
 class LeadPipeline(BaseAgent):
-    """Multi-source lead generation, driven by GTM Playbook config."""
+    """Serper Places-based lead generation, driven by GTM Playbook config."""
 
     agent_name = "lead_pipeline"
     default_model = "haiku"
 
     async def generate_leads(self, context) -> dict:
-        """Fetch leads from all configured sources for all active businesses."""
+        """Fetch leads from Serper Places for all active businesses."""
         businesses = await get_active_businesses()
         if not businesses:
+            logger.info("lead_pipeline_skip", reason="no active businesses")
             return {"businesses_processed": 0, "total_leads": 0}
 
         total = 0
@@ -204,36 +149,38 @@ class LeadPipeline(BaseAgent):
         for biz in businesses:
             playbook = await load_playbook(biz["id"])
             if not playbook:
+                logger.warning("lead_pipeline_no_playbook", business_id=biz["id"])
                 continue
 
-            lead_sources = playbook.get("lead_sources", [])
-            lead_sources.sort(key=lambda s: s.get("priority", 99))
+            queries = _build_search_queries(playbook)
+            if not queries:
+                logger.warning("lead_pipeline_no_queries", business_id=biz["id"])
+                continue
 
-            biz_leads = []
-            for source_cfg in lead_sources:
-                source_type = source_cfg.get("type", "")
-                handler = SOURCE_HANDLERS.get(source_type)
-                if not handler:
-                    logger.warning("unknown_lead_source", source=source_type)
-                    continue
-                raw = await handler(source_cfg, biz["id"])
-                biz_leads.extend(raw)
+            raw_leads = await _search_serper_places(queries)
 
-            # Deduplicate and insert
             inserted = 0
+            skipped_dup = 0
             async with SessionLocal() as db:
-                for lead in biz_leads:
+                existing = await _load_existing_names(db, biz["id"])
+
+                for lead in raw_leads:
                     name = lead.get("name", "")
                     if not name:
                         continue
-                    is_dup = await _check_duplicate(db, biz["id"], name, lead.get("address"))
-                    if is_dup:
+                    norm = _normalize(name)
+                    if any(norm in ex or ex in norm for ex in existing if len(ex) > 3):
+                        skipped_dup += 1
                         continue
+
                     await db.execute(
                         text(
-                            "INSERT INTO leads (business_id, name, company, phone, source, "
-                            "source_url, consent_type, enrichment_data, status) "
-                            "VALUES (:biz, :name, :company, :phone, :source, :url, :consent, :enrich, 'new')"
+                            "INSERT INTO leads "
+                            "(business_id, name, company, phone, source, source_url, "
+                            "consent_type, province, enrichment_data, status) "
+                            "VALUES (:biz, :name, :company, :phone, :source, :url, "
+                            ":consent, :province, :enrich, 'new') "
+                            "ON CONFLICT DO NOTHING"
                         ),
                         {
                             "biz": biz["id"],
@@ -243,21 +190,49 @@ class LeadPipeline(BaseAgent):
                             "source": lead.get("source"),
                             "url": lead.get("source_url"),
                             "consent": lead.get("consent_type"),
+                            "province": lead.get("province"),
                             "enrich": lead.get("enrichment_data"),
                         },
                     )
                     inserted += 1
+                    existing.add(norm)
+
                 await db.commit()
 
             total += inserted
-            results.append({"business_id": biz["id"], "slug": biz["slug"], "leads_inserted": inserted})
+            results.append({
+                "business_id": biz["id"],
+                "slug": biz["slug"],
+                "leads_inserted": inserted,
+                "duplicates_skipped": skipped_dup,
+                "queries_run": len(queries),
+            })
+            logger.info(
+                "lead_pipeline_done",
+                business_id=biz["id"],
+                slug=biz["slug"],
+                raw=len(raw_leads),
+                inserted=inserted,
+                skipped=skipped_dup,
+            )
             await self.log_execution(
                 action="generate_leads",
-                result={"sources": len(lead_sources), "raw": len(biz_leads), "inserted": inserted},
+                result={"queries": len(queries), "raw": len(raw_leads), "inserted": inserted},
                 business_id=biz["id"],
             )
 
         return {"businesses_processed": len(results), "total_leads": total, "details": results}
+
+
+async def _load_existing_names(db, business_id: int) -> set[str]:
+    """Load normalized names of existing leads for dedup."""
+    rows = (
+        await db.execute(
+            text("SELECT name FROM leads WHERE business_id = :biz"),
+            {"biz": business_id},
+        )
+    ).fetchall()
+    return {_normalize(r.name) for r in rows if r.name}
 
 
 def register(hatchet_instance):

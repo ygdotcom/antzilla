@@ -139,19 +139,44 @@ class GrowthHackerAgent(BaseAgent):
         return {"scored_tactics": scored}
 
     async def auto_execute_easy(self, context) -> dict:
-        """Submit to directories, create free tools — placeholder for actual execution."""
+        """Log auto-executable tactics and send Slack notification for manual follow-up."""
         data = context.step_output("score_and_prioritize")
         scored = data.get("scored_tactics", {})
+        biz_data = context.step_output("research_opportunities").get("businesses", [])
+        biz_map = {b["id"]: b["name"] for b in biz_data}
 
         executed = 0
+        actions = []
         for biz_id, tactics in scored.items():
             for t in tactics[:3]:
                 if t.get("auto_executable"):
+                    action_detail = {
+                        "business_id": biz_id,
+                        "business_name": biz_map.get(biz_id, "unknown"),
+                        "tactic_type": t.get("type", ""),
+                        "description": t.get("description", "")[:200],
+                        "score": t.get("score", 0),
+                    }
+                    actions.append(action_detail)
+                    await self.log_execution(
+                        action="auto_execute_tactic",
+                        result=action_detail,
+                        business_id=biz_id if isinstance(biz_id, int) else None,
+                    )
                     executed += 1
+
+        if actions:
+            report = ":gear: *Growth Hacker — Auto-Executable Tactics (Manual Follow-Up Needed)*\n\n"
+            for a in actions:
+                report += (
+                    f"• *{a['business_name']}* — [{a['tactic_type']}] "
+                    f"{a['description'][:80]}... (score: {a['score']})\n"
+                )
+            await _send_slack_report(report)
 
         await self.log_execution(
             action="auto_execute_easy",
-            result={"executed_count": executed},
+            result={"executed_count": executed, "actions": actions},
         )
 
         return {"auto_executed": executed}

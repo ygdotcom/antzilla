@@ -15,6 +15,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+import httpx
+
 from src.config import settings
 from src.db import SessionLocal
 from src.dashboard.deps import (
@@ -268,8 +270,81 @@ async def run_build_pipeline(business_id: int):
 
             finalize_result = build_ctx._outputs.get("finalize", {})
             deployment_url = finalize_result.get("deployment_url", "")
+            github_repo = finalize_result.get("github_repo", "")
 
-            # --- STEP 3: Design QA (logo + review) ---
+            # --- STEP 3: Infra Setup (Supabase + Stripe + Vercel env vars) ---
+            logger.info("build_pipeline_step", step="infra_setup", business=biz.name)
+            from src.agents.infra_setup import InfraSetup
+            infra = InfraSetup()
+
+            # Get vercel project ID and architecture pricing
+            vercel_pid = ""
+            async with SessionLocal() as db:
+                biz_row = (await db.execute(sa_text(
+                    "SELECT vercel_project_id FROM businesses WHERE id = :id"
+                ), {"id": business_id})).fetchone()
+                if biz_row:
+                    vercel_pid = biz_row.vercel_project_id or ""
+
+            architecture = build_ctx._outputs.get("generate_architecture", {}).get("architecture", {})
+            pricing = architecture.get("pricing")
+
+            # Collect migrations from generated code
+            code_output = build_ctx._outputs.get("generate_code", {}).get("code_output", {})
+            migrations_sql = ""
+            for mig in code_output.get("migrations", []):
+                if mig.get("content"):
+                    migrations_sql += mig["content"] + "\n"
+
+            sb_result = await infra.setup_supabase(business_id, biz.slug or "", migrations_sql)
+            st_result = await infra.setup_stripe(business_id, biz.name, biz.slug or "", pricing)
+            wh_result = {}
+            if deployment_url:
+                wh_result = await infra.create_stripe_webhook(business_id, deployment_url)
+            if vercel_pid:
+                await infra.set_vercel_env_vars(
+                    business_id, vercel_pid, deployment_url,
+                    st_result.get("stripe_config", {}),
+                    wh_result.get("webhook_secret", ""),
+                )
+
+            async with SessionLocal() as db:
+                await db.execute(sa_text(
+                    "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                    "VALUES ('infra_setup', 'setup_complete', :result, 'success', :biz_id)"
+                ), {
+                    "result": json.dumps({
+                        "supabase": sb_result.get("success"),
+                        "stripe": st_result.get("success"),
+                        "webhook": wh_result.get("success") if wh_result else None,
+                    }),
+                    "biz_id": business_id,
+                })
+                await db.commit()
+
+            # Trigger a redeploy on Vercel so env vars take effect
+            if deployment_url and vercel_pid:
+                try:
+                    vercel_token = settings.get("VERCEL_TOKEN")
+                    gh_token = settings.get("GITHUB_TOKEN")
+                    async with httpx.AsyncClient(timeout=30) as vc:
+                        # Get repo ID
+                        gh_resp = await vc.get(
+                            f"https://api.github.com/repos/{github_repo}",
+                            headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/vnd.github+json"},
+                        )
+                        repo_id = str(gh_resp.json().get("id", "")) if gh_resp.status_code == 200 else ""
+                        if repo_id:
+                            await vc.post(
+                                "https://api.vercel.com/v13/deployments",
+                                headers={"Authorization": f"Bearer {vercel_token}", "Content-Type": "application/json"},
+                                json={"name": (biz.slug or ""), "gitSource": {"type": "github", "repoId": repo_id, "ref": "main"}},
+                            )
+                            logger.info("vercel_redeployed_with_env_vars", business=biz.name)
+                except Exception as redeploy_exc:
+                    logger.warning("vercel_redeploy_failed", error=str(redeploy_exc))
+
+            # --- STEP 4: Design QA (logo + review) ---
             logger.info("build_pipeline_step", step="design_qa", business=biz.name)
 
             class DesignContext:

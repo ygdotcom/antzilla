@@ -209,7 +209,45 @@ class OutreachAgent(BaseAgent):
                     total_queued += 1
 
                 if should_send:
-                    # In production: send via Instantly API
+                    try:
+                        instantly_key = settings.get("INSTANTLY_API_KEY")
+                        if instantly_key:
+                            from src.integrations.instantly import send_email
+                            # Get or create campaign for this business
+                            campaign_id = playbook.get("instantly_campaign_id", "")
+                            if not campaign_id:
+                                from src.integrations.instantly import create_campaign
+                                camp = await create_campaign(
+                                    name=f"{biz['slug']}-outreach",
+                                    sending_accounts=[],
+                                    subject=subject,
+                                    body=body,
+                                )
+                                campaign_id = camp.get("campaign_id", "")
+                            if campaign_id:
+                                await send_email(
+                                    to_email=lead.email,
+                                    subject=subject,
+                                    body=body,
+                                    campaign_id=campaign_id,
+                                )
+                        else:
+                            resend_key = settings.get("RESEND_API_KEY")
+                            if resend_key:
+                                import httpx as _httpx
+                                async with _httpx.AsyncClient(timeout=10) as _c:
+                                    await _c.post(
+                                        "https://api.resend.com/emails",
+                                        headers={"Authorization": f"Bearer {resend_key}"},
+                                        json={
+                                            "from": f"hello@{biz.get('slug', 'app')}.ca",
+                                            "to": [lead.email],
+                                            "subject": subject,
+                                            "html": body,
+                                        },
+                                    )
+                    except Exception as send_exc:
+                        logger.warning("outreach_send_failed", lead=lead.name, error=str(send_exc))
                     total_sent += 1
 
                 # Update lead status

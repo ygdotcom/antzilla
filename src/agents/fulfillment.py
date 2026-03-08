@@ -23,6 +23,19 @@ logger = structlog.get_logger()
 # Registry: business slug → async handler(job, db) -> dict
 FULFILLMENT_HANDLERS: dict[str, callable] = {}
 
+GENERIC_FULFILLMENT_PROMPT = """\
+Tu es un agent de fulfillment. Tu génères un livrable professionnel pour un client.
+
+Tu reçois: job_type, input du client, type de produit du business, nom du business.
+
+RÈGLES:
+- Génère un contenu complet et professionnel
+- Adapte le format au job_type (devis, rapport, document, contenu, etc.)
+- Bilingue: si l'input contient du français, réponds en français
+- Inclus des sections claires avec headers
+- Réponds en JSON: {"title": "...", "content": "...", "format": "text|html|markdown", "metadata": {}}
+"""
+
 
 def register_handler(slug: str):
     """Decorator to register a fulfillment handler for a business slug."""
@@ -32,6 +45,51 @@ def register_handler(slug: str):
         return fn
 
     return decorator
+
+
+async def _generic_claude_handler(job: dict, db) -> dict:
+    """Generic Claude-based handler for any business without a custom handler."""
+    from sqlalchemy import text as sa_text
+
+    row = (
+        await db.execute(
+            sa_text(
+                "SELECT b.name, b.slug, COALESCE(b.config->>'product_type', b.slug) AS product_type "
+                "FROM businesses b WHERE b.id = :biz_id"
+            ),
+            {"biz_id": job["business_id"]},
+        )
+    ).fetchone()
+
+    biz_name = row.name if row else "Unknown"
+    product_type = row.product_type if row else job.get("job_type", "generic")
+
+    input_data = job.get("input_data") or {}
+    user_payload = json.dumps({
+        "job_type": job["job_type"],
+        "product_type": product_type,
+        "business_name": biz_name,
+        "input": input_data,
+    }, default=str)
+
+    response, cost = await call_claude(
+        model_tier="sonnet",
+        system=GENERIC_FULFILLMENT_PROMPT,
+        user=user_payload,
+        max_tokens=4096,
+        temperature=0.3,
+    )
+
+    try:
+        result = json.loads(response)
+    except json.JSONDecodeError:
+        result = {"title": f"{job['job_type']} — {biz_name}", "content": response, "format": "text"}
+
+    result["cost_usd"] = cost
+    return result
+
+
+FULFILLMENT_HANDLERS["__generic__"] = _generic_claude_handler
 
 
 class FulfillmentAgent(BaseAgent):
@@ -81,28 +139,19 @@ class FulfillmentAgent(BaseAgent):
         if not job:
             return {"output": None, "error": receive_out.get("error")}
 
-        handler = FULFILLMENT_HANDLERS.get(job["business_slug"])
+        slug = job["business_slug"]
+        handler = FULFILLMENT_HANDLERS.get(slug) or FULFILLMENT_HANDLERS.get("__generic__")
         if handler:
             async with SessionLocal() as db:
                 result = await handler(job, db)
-            return {"output": result, "handler": job["business_slug"]}
+            await self.log_execution(
+                action="process_job",
+                result={"job_id": job["id"], "handler": slug if slug in FULFILLMENT_HANDLERS else "__generic__"},
+                cost_usd=result.get("cost_usd", 0) if isinstance(result, dict) else 0,
+            )
+            return {"output": result, "handler": slug if slug in FULFILLMENT_HANDLERS else "__generic__"}
 
-        model = await self.check_budget()
-        input_data = job.get("input_data") or {}
-        system = (
-            "Tu traites une tâche de fulfillment pour un client. "
-            "Génère le contenu ou la structure attendue selon job_type. "
-            "Réponds en JSON si structuré, sinon en texte clair."
-        )
-        user = json.dumps({"job_type": job["job_type"], "input": input_data})
-        response, cost = await call_claude(model_tier=model, system=system, user=user)
-        try:
-            output = json.loads(response)
-        except json.JSONDecodeError:
-            output = {"raw": response}
-
-        await self.log_execution(action="process_job", result={"job_id": job["id"]}, cost_usd=cost)
-        return {"output": output, "cost_usd": cost}
+        return {"output": None, "error": "no handler available"}
 
     async def generate_deliverable(self, context) -> dict:
         """Produce output (PDF, email body, etc.)."""

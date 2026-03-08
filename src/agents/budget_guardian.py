@@ -8,6 +8,8 @@ critical at 95%.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import structlog
 from sqlalchemy import text
@@ -114,6 +116,32 @@ class BudgetGuardianAgent(BaseAgent):
         elif throttle == "critical":
             actions_taken.append("CRITICAL: Pause non-critical agents immediately")
             actions_taken.append("Reduce voice call volume to minimum")
+
+        # Enforce throttling by writing overrides to secrets table
+        async with SessionLocal() as db:
+            if throttle in ("pause_non_critical", "critical"):
+                await db.execute(
+                    text(
+                        "INSERT INTO secrets (key, value, updated_at) "
+                        "VALUES ('MODEL_OVERRIDE', 'haiku', NOW()) "
+                        "ON CONFLICT (key) DO UPDATE SET value = 'haiku', updated_at = NOW()"
+                    )
+                )
+                actions_taken.append("Enforced MODEL_OVERRIDE=haiku in secrets")
+
+            if throttle == "critical":
+                paused_val = json.dumps(NON_CRITICAL_AGENTS)
+                await db.execute(
+                    text(
+                        "INSERT INTO secrets (key, value, updated_at) "
+                        "VALUES ('PAUSED_AGENTS', :val, NOW()) "
+                        "ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = NOW()"
+                    ),
+                    {"val": paused_val},
+                )
+                actions_taken.append("Enforced PAUSED_AGENTS in secrets")
+
+            await db.commit()
 
         await self.log_execution(
             action="throttle_if_needed",
