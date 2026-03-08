@@ -51,15 +51,15 @@ async def budget_page(request: Request, user: str = Depends(verify_credentials))
 
     return templates.TemplateResponse("budget.html", {
         "request": request,
-        "spend_today": float(today.total),
-        "spend_month": float(month.total),
+        "spend_today": float(today.total or 0),
+        "spend_month": float(month.total or 0),
         "budget_daily_limit": settings.DAILY_BUDGET_LIMIT_USD,
         "daily_costs": [
-            {"date": d.date.isoformat(), "provider": d.api_provider, "cost": float(d.cost)}
+            {"date": d.date.isoformat(), "provider": d.api_provider or "unknown", "cost": float(d.cost or 0)}
             for d in daily
         ],
         "agent_costs": [
-            {"agent": a.agent_name, "cost": float(a.total)}
+            {"agent": a.agent_name, "cost": float(a.total or 0)}
             for a in agent_costs
         ],
         "allocations": allocations,

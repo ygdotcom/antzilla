@@ -357,6 +357,37 @@ class IdeaFactory(BaseAgent):
             for i in top_3
         ]
 
+        # Auto-run Deep Scout on top ideas and create approval notifications
+        for idea, idea_id in zip(qualified, saved_ids):
+            score = idea.get("score", 0)
+            if score >= 8.0:
+                # High-confidence idea — auto-validate and notify for approval
+                async with SessionLocal() as db:
+                    await db.execute(
+                        text("UPDATE ideas SET status = 'validated', updated_at = NOW() WHERE id = :id"),
+                        {"id": idea_id},
+                    )
+                    await db.execute(
+                        text(
+                            "INSERT INTO agent_logs (agent_name, action, result, status) "
+                            "VALUES ('idea_factory', :action, :result, 'success')"
+                        ),
+                        {
+                            "action": f"auto_validated: {idea.get('name')} (score {score})",
+                            "result": json.dumps({"idea_id": idea_id, "score": score, "auto": True}),
+                        },
+                    )
+                    # Create notification for CEO approval
+                    await db.execute(
+                        text(
+                            "INSERT INTO workflow_triggers (workflow_name, status, triggered_by) "
+                            "VALUES (:wf, 'pending', 'idea_factory')"
+                        ),
+                        {"wf": f"approve_idea_{idea_id}:{idea.get('name', '')}"},
+                    )
+                    await db.commit()
+                logger.info("idea_auto_validated", name=idea.get("name"), score=score, idea_id=idea_id)
+
         await self.log_execution(
             action="save_and_notify",
             result={"saved": len(saved_ids), "top_3": top_3_summary},

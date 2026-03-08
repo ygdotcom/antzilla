@@ -194,6 +194,33 @@ async def trigger_workflow(request: Request, workflow_name: str, user: str = Dep
     )
 
 
+@app.get("/api/notifications/count", response_class=HTMLResponse)
+async def notification_count(request: Request):
+    """Returns the notification badge HTML — polled every 10s by HTMX."""
+    user = get_current_user(request)
+    if not user:
+        return HTMLResponse("")
+    from sqlalchemy import text as sa_text
+    from src.db import SessionLocal
+    try:
+        async with SessionLocal() as db:
+            # Count: validated ideas awaiting approval + pending workflow triggers
+            row = (await db.execute(sa_text(
+                "SELECT "
+                "(SELECT COUNT(*) FROM ideas WHERE status = 'validated') + "
+                "(SELECT COUNT(*) FROM workflow_triggers WHERE status = 'pending' AND workflow_name LIKE 'approve_%') "
+                "AS total"
+            ))).fetchone()
+            count = row.total or 0
+        if count > 0:
+            return HTMLResponse(
+                f'<span class="flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold">{count}</span>'
+            )
+    except Exception:
+        pass
+    return HTMLResponse("")
+
+
 @app.get("/businesses", response_class=HTMLResponse)
 async def businesses_list(request: Request, user: str = Depends(verify_credentials)):
     from sqlalchemy import text as sa_text
