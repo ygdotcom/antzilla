@@ -152,33 +152,40 @@ async def trigger_workflow(request: Request, workflow_name: str, user: str = Dep
 
             ctx = FakeContext()
             for step_name in steps:
-                method = getattr(agent, step_name)
-                result = await method(ctx)
-                ctx._outputs[step_name] = result if isinstance(result, dict) else {}
-                logger.info("agent_step_complete", agent=workflow_name, step=step_name)
+                logger.info("agent_step_starting", agent=workflow_name, step=step_name)
+                try:
+                    method = getattr(agent, step_name)
+                    result = await method(ctx)
+                    ctx._outputs[step_name] = result if isinstance(result, dict) else {}
+                    logger.info("agent_step_complete", agent=workflow_name, step=step_name, result_keys=list(result.keys()) if isinstance(result, dict) else [])
+                except Exception as step_exc:
+                    logger.error("agent_step_failed", agent=workflow_name, step=step_name, error=str(step_exc))
+                    raise
 
             async with SessionLocal() as db:
                 await db.execute(
                     sa_text(
                         "UPDATE workflow_triggers SET status = 'completed', completed_at = NOW() "
-                        "WHERE workflow_name = :wf AND status = 'running' "
-                        "ORDER BY created_at DESC LIMIT 1"
+                        "WHERE id = (SELECT id FROM workflow_triggers WHERE workflow_name = :wf AND status = 'running' ORDER BY created_at DESC LIMIT 1)"
                     ),
                     {"wf": workflow_name},
                 )
                 await db.commit()
+            logger.info("agent_run_complete", agent=workflow_name)
         except Exception as exc:
-            logger.error("agent_run_failed", agent=workflow_name, error=str(exc))
-            async with SessionLocal() as db:
-                await db.execute(
-                    sa_text(
-                        "UPDATE workflow_triggers SET status = 'failed', completed_at = NOW() "
-                        "WHERE workflow_name = :wf AND status = 'running' "
-                        "ORDER BY created_at DESC LIMIT 1"
-                    ),
-                    {"wf": workflow_name},
-                )
-                await db.commit()
+            logger.error("agent_run_failed", agent=workflow_name, error=str(exc), error_type=type(exc).__name__)
+            try:
+                async with SessionLocal() as db:
+                    await db.execute(
+                        sa_text(
+                            "UPDATE workflow_triggers SET status = 'failed', completed_at = NOW() "
+                            "WHERE id = (SELECT id FROM workflow_triggers WHERE workflow_name = :wf AND status = 'running' ORDER BY created_at DESC LIMIT 1)"
+                        ),
+                        {"wf": workflow_name},
+                    )
+                    await db.commit()
+            except Exception:
+                pass
 
     asyncio.create_task(_run_agent())
 
