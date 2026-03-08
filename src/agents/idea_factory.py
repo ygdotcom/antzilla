@@ -29,21 +29,16 @@ SCRAPE_SOURCES = [
         "url": "https://www.producthunt.com/topics/saas",
         "description": "Product Hunt SaaS launches",
     },
-    {
-        "name": "reddit_saas",
-        "url": "https://www.reddit.com/r/SaaS/top/.json?t=week&limit=25",
-        "description": "r/SaaS top posts this week",
-    },
-    {
-        "name": "reddit_smallbusiness",
-        "url": "https://www.reddit.com/r/smallbusiness/top/.json?t=week&limit=25",
-        "description": "r/smallbusiness top posts this week",
-    },
-    {
-        "name": "reddit_entrepreneur",
-        "url": "https://www.reddit.com/r/Entrepreneur/top/.json?t=week&limit=25",
-        "description": "r/Entrepreneur top posts this week",
-    },
+]
+
+# Serper-based sources replace Reddit (which blocks scraping with 403)
+SERPER_QUERIES = [
+    "small SaaS tool Canada doesn't have site:indiehackers.com",
+    "micro SaaS tool spreadsheet replacement 2026",
+    "Shopify app low rated complaints Canada",
+    "niche SaaS tool under 20 employees launched 2025 2026",
+    "vertical SaaS tool for contractors tradespeople",
+    "SaaS tool Quebec Canada bilingual",
 ]
 
 SCORE_THRESHOLD = 7.0
@@ -160,12 +155,38 @@ class IdeaFactory(BaseAgent):
     default_model = "sonnet"
 
     async def scrape_sources(self, context) -> dict:
-        """Step 1: Scrape trend sources for raw idea signals."""
+        """Step 1: Scrape Product Hunt + Serper web search for idea signals."""
         results = []
+
+        # Scrape static sources (Product Hunt)
         async with httpx.AsyncClient(timeout=15) as client:
             for source in SCRAPE_SOURCES:
                 data = await _scrape_source(client, source)
                 results.append(data)
+
+        # Use Serper for research queries (replaces Reddit which blocks with 403)
+        from src.config import settings
+        serper_key = settings.get("SERPER_API_KEY")
+        if serper_key:
+            async with httpx.AsyncClient(timeout=15) as client:
+                for query in SERPER_QUERIES:
+                    try:
+                        resp = await client.post(
+                            "https://google.serper.dev/search",
+                            headers={"X-API-KEY": serper_key},
+                            json={"q": query, "num": 10},
+                        )
+                        resp.raise_for_status()
+                        search_results = resp.json().get("organic", [])
+                        results.append({
+                            "source": f"serper_{query[:30]}",
+                            "description": query,
+                            "data": [{"title": r.get("title"), "snippet": r.get("snippet"), "link": r.get("link")} for r in search_results],
+                            "status": "ok",
+                        })
+                    except Exception as exc:
+                        logger.warning("serper_search_failed", query=query[:30], error=str(exc))
+                        results.append({"source": f"serper_{query[:30]}", "data": None, "status": f"error: {exc}"})
 
         successful = [r for r in results if r["status"] == "ok"]
         logger.info("scrape_complete", total=len(results), successful=len(successful))
