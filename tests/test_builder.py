@@ -330,6 +330,8 @@ class TestFinalize:
             side_effect=lambda name: {
                 "create_github_repo": {"repo": "ygdotcom/test-biz"},
                 "push_to_github": {"pushed_files": [{"path": "src/app.tsx", "status": 201}]},
+                "deploy_vercel": {"deployment_url": "test-biz.vercel.app", "success": True},
+                "run_lighthouse": {"lighthouse_scores": {"performance": 90}},
             }[name]
         )
 
@@ -345,9 +347,11 @@ class TestFinalize:
         ):
             result = await agent.finalize(ctx)
 
-        assert result["status"] == "building"
+        assert result["status"] == "pre_launch"
         assert result["github_repo"] == "ygdotcom/test-biz"
         assert result["files_pushed"] == 1
+        assert result["deployment_url"] == "test-biz.vercel.app"
+        assert result["lighthouse_scores"]["performance"] == 90
 
 
 class TestArchitecturePrompt:

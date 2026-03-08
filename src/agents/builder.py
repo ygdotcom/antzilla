@@ -449,24 +449,164 @@ class Builder(BaseAgent):
 
         return {"pushed_files": pushed_files, "repo": github_repo}
 
+    async def deploy_vercel(self, context) -> dict:
+        """Step 6: Create Vercel project linked to GitHub repo and trigger deploy."""
+        input_data = context.workflow_input()
+        business_id = input_data.get("business_id")
+        repo_info = context.step_output("create_github_repo")
+        github_repo = repo_info.get("repo", "")
+
+        token = settings.get("VERCEL_TOKEN")
+        if not token:
+            logger.warning("vercel_token_missing")
+            await self.log_execution(
+                action="deploy_vercel", result={"skipped": True, "reason": "VERCEL_TOKEN not configured"},
+                business_id=business_id,
+            )
+            return {"deployment_url": None, "success": False, "error": "VERCEL_TOKEN not configured"}
+
+        if not github_repo:
+            return {"deployment_url": None, "success": False, "error": "No GitHub repo"}
+
+        repo_parts = github_repo.split("/")
+        repo_name = repo_parts[-1] if repo_parts else github_repo
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+            try:
+                # Create Vercel project linked to GitHub
+                create_resp = await client.post(
+                    "https://api.vercel.com/v10/projects",
+                    headers=headers,
+                    json={
+                        "name": repo_name,
+                        "framework": "nextjs",
+                        "gitRepository": {
+                            "type": "github",
+                            "repo": github_repo,
+                        },
+                    },
+                )
+                if create_resp.status_code in (200, 201):
+                    project = create_resp.json()
+                    project_id = project.get("id", "")
+                    logger.info("vercel_project_created", project_id=project_id, name=repo_name)
+
+                    if business_id:
+                        async with SessionLocal() as db:
+                            await db.execute(text(
+                                "UPDATE businesses SET vercel_project_id = :pid, updated_at = NOW() WHERE id = :id"
+                            ), {"pid": project_id, "id": business_id})
+                            await db.commit()
+                elif create_resp.status_code == 409:
+                    logger.info("vercel_project_exists", name=repo_name)
+                    project_id = repo_name
+                else:
+                    logger.error("vercel_project_create_failed", status=create_resp.status_code, body=create_resp.text[:300])
+                    return {"deployment_url": None, "success": False, "error": f"Vercel project create: {create_resp.status_code}"}
+
+                # Trigger deployment
+                deploy_resp = await client.post(
+                    "https://api.vercel.com/v13/deployments",
+                    headers=headers,
+                    json={
+                        "name": repo_name,
+                        "gitSource": {"type": "github", "repo": github_repo, "ref": "main"},
+                    },
+                )
+                if deploy_resp.status_code in (200, 201):
+                    deployment = deploy_resp.json()
+                    deploy_url = deployment.get("url", "")
+                    deploy_id = deployment.get("id", "")
+                    logger.info("vercel_deployed", url=deploy_url, id=deploy_id)
+
+                    if business_id and deploy_url:
+                        async with SessionLocal() as db:
+                            await db.execute(text(
+                                "UPDATE businesses SET domain = :domain, updated_at = NOW() WHERE id = :id"
+                            ), {"domain": deploy_url, "id": business_id})
+                            await db.commit()
+
+                    await self.log_execution(
+                        action="deploy_vercel",
+                        result={"url": deploy_url, "id": deploy_id},
+                        business_id=business_id,
+                    )
+                    return {"deployment_url": deploy_url, "deployment_id": deploy_id, "success": True}
+                else:
+                    logger.error("vercel_deploy_failed", status=deploy_resp.status_code, body=deploy_resp.text[:300])
+                    return {"deployment_url": None, "success": False, "error": f"Vercel deploy: {deploy_resp.status_code}"}
+
+            except Exception as exc:
+                logger.error("vercel_deploy_error", error=str(exc))
+                return {"deployment_url": None, "success": False, "error": str(exc)}
+
+    async def run_lighthouse(self, context) -> dict:
+        """Step 7: Run Lighthouse audit on the deployed site via PageSpeed Insights API."""
+        deploy = context.step_output("deploy_vercel")
+        url = deploy.get("deployment_url")
+
+        if not url:
+            return {"lighthouse_scores": None, "reason": "no deployment URL"}
+
+        # Wait a bit for deployment to be ready
+        import asyncio
+        await asyncio.sleep(30)
+
+        async with httpx.AsyncClient(timeout=90) as client:
+            try:
+                resp = await client.get(
+                    "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
+                    params={
+                        "url": f"https://{url}",
+                        "strategy": "mobile",
+                        "category": ["performance", "accessibility", "best-practices", "seo"],
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    categories = data.get("lighthouseResult", {}).get("categories", {})
+                    scores = {
+                        cat: round(info.get("score", 0) * 100)
+                        for cat, info in categories.items()
+                    }
+                    logger.info("lighthouse_scores", url=url, scores=scores)
+                    await self.log_execution(
+                        action="run_lighthouse",
+                        result={"scores": scores, "url": url},
+                    )
+                    return {"lighthouse_scores": scores, "url": url}
+                logger.warning("lighthouse_failed", status=resp.status_code)
+                return {"lighthouse_scores": None, "status": resp.status_code}
+            except Exception as exc:
+                logger.warning("lighthouse_error", error=str(exc))
+                return {"lighthouse_scores": None, "error": str(exc)}
+
     async def finalize(self, context) -> dict:
-        """Step 6: Update business status and log completion."""
+        """Step 8: Update business status and log completion."""
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
         repo_info = context.step_output("create_github_repo")
         push_info = context.step_output("push_to_github")
+        deploy_info = context.step_output("deploy_vercel")
+        lighthouse_info = context.step_output("run_lighthouse")
 
         github_repo = repo_info.get("repo", "")
         files_pushed = len(push_info.get("pushed_files", []))
+        deploy_url = deploy_info.get("deployment_url")
+        lighthouse = lighthouse_info.get("lighthouse_scores")
+
+        final_status = "pre_launch" if deploy_url else "building"
 
         async with SessionLocal() as db:
             if business_id:
                 await db.execute(
                     text(
-                        "UPDATE businesses SET status = 'building', github_repo = :repo, "
+                        "UPDATE businesses SET status = :status, github_repo = :repo, "
                         "updated_at = NOW() WHERE id = :id"
                     ),
-                    {"repo": github_repo, "id": business_id},
+                    {"status": final_status, "repo": github_repo, "id": business_id},
                 )
                 await db.commit()
 
@@ -476,7 +616,9 @@ class Builder(BaseAgent):
                 "business_id": business_id,
                 "github_repo": github_repo,
                 "files_pushed": files_pushed,
-                "status": "building",
+                "deployment_url": deploy_url,
+                "lighthouse_scores": lighthouse,
+                "status": final_status,
             },
             business_id=business_id,
         )
@@ -485,7 +627,9 @@ class Builder(BaseAgent):
             "business_id": business_id,
             "github_repo": github_repo,
             "files_pushed": files_pushed,
-            "status": "building",
+            "deployment_url": deploy_url,
+            "lighthouse_scores": lighthouse,
+            "status": final_status,
         }
 
 
@@ -513,6 +657,14 @@ def register(hatchet_instance):
     @wf.task(execution_timeout="5m", retries=2)
     async def push_to_github(input, ctx):
         return await agent.push_to_github(ctx)
+
+    @wf.task(execution_timeout="5m", retries=2)
+    async def deploy_vercel(input, ctx):
+        return await agent.deploy_vercel(ctx)
+
+    @wf.task(execution_timeout="3m", retries=1)
+    async def run_lighthouse(input, ctx):
+        return await agent.run_lighthouse(ctx)
 
     @wf.task(execution_timeout="3m", retries=1)
     async def finalize(input, ctx):
