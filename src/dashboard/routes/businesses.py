@@ -138,6 +138,10 @@ async def kill_business(request: Request, slug: str, user: str = Depends(verify_
         await db.execute(text(
             "UPDATE businesses SET status = 'killed', killed_at = NOW(), updated_at = NOW() WHERE slug = :slug"
         ), {"slug": slug})
+        await db.execute(text(
+            "INSERT INTO agent_logs (agent_name, action, result, status) "
+            "VALUES ('ceo_dashboard', :action, :result, 'success')"
+        ), {"action": f"business_killed: {slug}", "result": json.dumps({"slug": slug})})
         await db.commit()
     return RedirectResponse("/decisions", status_code=303)
 

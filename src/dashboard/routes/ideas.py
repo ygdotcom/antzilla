@@ -126,30 +126,70 @@ async def idea_detail(request: Request, idea_id: int, user: str = Depends(verify
     })
 
 
+async def _log_idea_event(db, idea_id: int, action: str, old_status: str, new_status: str):
+    """Log every idea status change to agent_logs so it appears in the Console."""
+    await db.execute(
+        text(
+            "INSERT INTO agent_logs (agent_name, action, result, status) "
+            "VALUES ('ceo_dashboard', :action, :result, 'success')"
+        ),
+        {
+            "action": action,
+            "result": json.dumps({"idea_id": idea_id, "from": old_status, "to": new_status}),
+        },
+    )
+
+
 @router.post("/{idea_id}/advance", response_class=HTMLResponse)
 async def advance_idea(idea_id: int, user: str = Depends(verify_credentials)):
-    """Advance new → scouting."""
+    """Advance new → scouting. Logs to console."""
     async with SessionLocal() as db:
-        await db.execute(text("UPDATE ideas SET status = 'scouting' WHERE id = :id AND status = 'new'"), {"id": idea_id})
+        row = (await db.execute(text("SELECT name, status FROM ideas WHERE id = :id"), {"id": idea_id})).fetchone()
+        if not row or row.status != "new":
+            return HTMLResponse('<span class="text-zinc-500">Cannot advance</span>')
+        await db.execute(text("UPDATE ideas SET status = 'scouting', updated_at = NOW() WHERE id = :id"), {"id": idea_id})
+        await _log_idea_event(db, idea_id, f"idea_advanced: {row.name}", "new", "scouting")
         await db.commit()
-    return HTMLResponse('<span class="text-green-400">Advanced</span>')
+    return HTMLResponse('<span class="text-blue-400">→ Scouting</span>')
 
 
 @router.post("/{idea_id}/validate", response_class=HTMLResponse)
 async def validate_idea(idea_id: int, user: str = Depends(verify_credentials)):
-    """Advance scouting → validated."""
+    """Advance scouting → validated. Logs to console."""
     async with SessionLocal() as db:
-        await db.execute(text("UPDATE ideas SET status = 'validated' WHERE id = :id AND status = 'scouting'"), {"id": idea_id})
+        row = (await db.execute(text("SELECT name, status FROM ideas WHERE id = :id"), {"id": idea_id})).fetchone()
+        if not row:
+            return HTMLResponse('<span class="text-zinc-500">Not found</span>')
+        await db.execute(text("UPDATE ideas SET status = 'validated', updated_at = NOW() WHERE id = :id"), {"id": idea_id})
+        await _log_idea_event(db, idea_id, f"idea_validated: {row.name}", row.status, "validated")
         await db.commit()
-    return HTMLResponse('<span class="text-green-400">Advanced to Validation</span>')
+    return HTMLResponse('<span class="text-green-400">→ Validated</span>')
+
+
+@router.post("/{idea_id}/approve", response_class=HTMLResponse)
+async def approve_idea(idea_id: int, user: str = Depends(verify_credentials)):
+    """Advance validated → approved (ready for build). Logs to console."""
+    async with SessionLocal() as db:
+        row = (await db.execute(text("SELECT name, status FROM ideas WHERE id = :id"), {"id": idea_id})).fetchone()
+        if not row:
+            return HTMLResponse('<span class="text-zinc-500">Not found</span>')
+        await db.execute(text("UPDATE ideas SET status = 'approved', updated_at = NOW() WHERE id = :id"), {"id": idea_id})
+        await _log_idea_event(db, idea_id, f"idea_approved: {row.name}", row.status, "approved")
+        await db.commit()
+    return HTMLResponse('<span class="text-brand">→ Approved for build</span>')
 
 
 @router.post("/{idea_id}/archive", response_class=HTMLResponse)
 async def archive_idea(idea_id: int, user: str = Depends(verify_credentials)):
+    """Kill an idea. Logs to console."""
     async with SessionLocal() as db:
-        await db.execute(text("UPDATE ideas SET status = 'killed', kill_reason = 'Archived by CEO' WHERE id = :id"), {"id": idea_id})
+        row = (await db.execute(text("SELECT name, status FROM ideas WHERE id = :id"), {"id": idea_id})).fetchone()
+        if not row:
+            return HTMLResponse('<span class="text-zinc-500">Not found</span>')
+        await db.execute(text("UPDATE ideas SET status = 'killed', kill_reason = 'Archived by CEO', updated_at = NOW() WHERE id = :id"), {"id": idea_id})
+        await _log_idea_event(db, idea_id, f"idea_killed: {row.name}", row.status, "killed")
         await db.commit()
-    return HTMLResponse('<span class="text-zinc-500">Archived</span>')
+    return HTMLResponse('<span class="text-zinc-500">Killed</span>')
 
 
 class IdeaProposal(BaseModel):
