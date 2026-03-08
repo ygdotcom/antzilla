@@ -363,3 +363,64 @@ async def test_all_secrets(user: str = Depends(verify_credentials)):
         tested += 1
 
     return JSONResponse({"tested": tested})
+
+
+class ConfigUpdate(BaseModel):
+    key: str
+    value: str
+
+
+@router.post("/api/config/update", response_class=HTMLResponse)
+async def update_config(req: ConfigUpdate, user: str = Depends(verify_credentials)):
+    """Save a factory config value (daily_budget, DRY_RUN, etc.) to secrets table."""
+    encrypted = encrypt(req.value)
+    async with SessionLocal() as db:
+        await db.execute(
+            text(
+                "INSERT INTO secrets (key, value_encrypted, category, display_name, is_configured, updated_at) "
+                "VALUES (:key, :val, 'core', :key, TRUE, NOW()) "
+                "ON CONFLICT (key) DO UPDATE SET value_encrypted = EXCLUDED.value_encrypted, "
+                "is_configured = TRUE, updated_at = NOW()"
+            ),
+            {"key": req.key, "val": encrypted},
+        )
+        await db.commit()
+    settings.invalidate(req.key)
+    return HTMLResponse(f'<span class="text-brand text-sm">Saved</span>')
+
+
+@router.post("/api/factory/reset", response_class=HTMLResponse)
+async def reset_factory(user: str = Depends(verify_credentials)):
+    """Danger: truncate all business data. Keeps secrets and dashboard_users."""
+    async with SessionLocal() as db:
+        for table in [
+            "agent_logs", "daily_snapshots", "budget_tracking", "voice_calls",
+            "support_tickets", "social_posts", "content", "referrals", "leads",
+            "customers", "jobs", "signals", "outreach_experiments", "testimonials",
+            "improvements", "factory_knowledge", "brand_mentions", "feature_requests",
+            "gtm_playbooks", "businesses", "ideas", "workflow_triggers",
+        ]:
+            try:
+                await db.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
+            except Exception:
+                pass
+        await db.commit()
+    return HTMLResponse('<span class="text-red-400 text-sm font-medium">Factory reset complete. All data cleared.</span>')
+
+
+@router.get("/api/export")
+async def export_data(user: str = Depends(verify_credentials)):
+    """Export key tables as JSON."""
+    import json as _json
+    export = {}
+    async with SessionLocal() as db:
+        for table in ["businesses", "ideas", "customers", "leads", "agent_logs", "daily_snapshots"]:
+            try:
+                rows = (await db.execute(text(f"SELECT * FROM {table} LIMIT 1000"))).fetchall()
+                export[table] = [dict(r._mapping) for r in rows]
+            except Exception:
+                export[table] = []
+    return JSONResponse(
+        content={k: _json.loads(_json.dumps(v, default=str)) for k, v in export.items()},
+        headers={"Content-Disposition": "attachment; filename=factory_export.json"},
+    )

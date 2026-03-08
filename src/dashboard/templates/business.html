@@ -160,8 +160,10 @@
             <td class="px-4 py-3 text-zinc-300">{{ p.email or "—" }}</td>
             <td class="px-4 py-3 text-zinc-300">{{ "%.0f"|format(p.score) }}</td>
             <td class="px-4 py-3">
-              <button class="text-brand hover:underline text-sm mr-2">Approve</button>
-              <button class="text-red-400 hover:underline text-sm">Reject</button>
+              <span id="outreach-action-{{ p.id }}">
+                <button hx-post="/leads/{{ p.id }}/approve" hx-target="#outreach-action-{{ p.id }}" hx-swap="innerHTML" class="text-brand hover:underline text-sm mr-2">Approve</button>
+                <button hx-post="/leads/{{ p.id }}/reject" hx-target="#outreach-action-{{ p.id }}" hx-swap="innerHTML" class="text-red-400 hover:underline text-sm">Reject</button>
+              </span>
             </td>
           </tr>
           {% endfor %}

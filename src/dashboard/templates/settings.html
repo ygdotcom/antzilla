@@ -106,14 +106,15 @@
           step="1"
           class="w-32 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-brand"
         />
-        <button type="button" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm" hx-post="/api/config/update" hx-vals='{"daily_budget": "0"}' hx-include="#daily-budget" hx-swap="none">
+        <button type="button" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm" id="save-budget-btn" onclick="saveBudgetLimit()">
           Save
         </button>
+        <span id="budget-save-status"></span>
       </div>
       <div class="flex items-center gap-4">
         <label for="dry-run" class="text-sm font-medium text-zinc-300 w-48">DRY_RUN (no side effects)</label>
         <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" id="dry-run" class="sr-only peer" />
+          <input type="checkbox" id="dry-run" class="sr-only peer" onchange="saveDryRun(this.checked)" />
           <div class="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
           <span class="ml-3 text-sm text-zinc-400">Off / On</span>
         </label>
@@ -199,18 +200,16 @@
       <button
         type="button"
         class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-sm font-medium text-red-400 transition-colors"
-        hx-delete="/api/factory/reset"
-        hx-confirm="Are you sure? This will reset the entire factory. This action cannot be undone."
-        hx-swap="none"
+        hx-post="/api/factory/reset"
+        hx-confirm="Are you sure? This will delete ALL business data. API keys will be kept. This cannot be undone."
+        hx-swap="outerHTML"
       >
         Reset factory
       </button>
       <button
         type="button"
         class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm font-medium text-white transition-colors"
-        hx-get="/api/export"
-        hx-swap="none"
-        hx-target="body"
+        onclick="window.open('/api/export', '_blank')"
       >
         Export data
       </button>
@@ -273,6 +272,25 @@
     } catch (e) {
       badge.innerHTML = '<span class="text-red-400 text-xs">Error</span>';
     }
+  }
+
+  async function saveBudgetLimit() {
+    const val = document.getElementById('daily-budget').value;
+    const status = document.getElementById('budget-save-status');
+    try {
+      const res = await fetch('/api/config/update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({key: 'DAILY_BUDGET_LIMIT_USD', value: val})
+      });
+      status.innerHTML = await res.text();
+    } catch (e) { status.innerHTML = '<span class="text-red-400 text-sm">Failed</span>'; }
+  }
+
+  async function saveDryRun(checked) {
+    await fetch('/api/config/update', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key: 'DRY_RUN', value: checked ? 'true' : 'false'})
+    });
   }
 
   async function inviteUser() {

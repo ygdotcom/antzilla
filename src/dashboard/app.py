@@ -95,6 +95,31 @@ app.include_router(leads.router)
 app.include_router(secrets_api.router)
 
 
+@app.post("/trigger/{workflow_name}", response_class=HTMLResponse)
+async def trigger_workflow(request: Request, workflow_name: str, user: str = Depends(verify_credentials)):
+    """Queue a workflow for the factory worker to pick up."""
+    from sqlalchemy import text as sa_text
+    from src.db import SessionLocal
+    current = get_current_user(request)
+    try:
+        async with SessionLocal() as db:
+            await db.execute(
+                sa_text(
+                    "INSERT INTO workflow_triggers (workflow_name, triggered_by) "
+                    "VALUES (:wf, :user)"
+                ),
+                {"wf": workflow_name, "user": current.get("username", "unknown") if current else "unknown"},
+            )
+            await db.commit()
+        return HTMLResponse(
+            f'<span class="text-brand text-sm font-medium">Queued {workflow_name}</span>'
+        )
+    except Exception as exc:
+        return HTMLResponse(
+            f'<span class="text-red-400 text-sm">Failed: {exc}</span>'
+        )
+
+
 @app.get("/businesses", response_class=HTMLResponse)
 async def businesses_list(request: Request, user: str = Depends(verify_credentials)):
     from sqlalchemy import text as sa_text

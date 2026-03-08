@@ -426,6 +426,18 @@ CREATE TABLE dashboard_users (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ═══ WORKFLOW TRIGGERS (dashboard → worker queue) ═══
+
+CREATE TABLE workflow_triggers (
+    id SERIAL PRIMARY KEY,
+    workflow_name TEXT NOT NULL,
+    input_data JSONB DEFAULT '{}',
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending','running','completed','failed')),
+    triggered_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
 -- ═══ BRAND MENTIONS (reputation monitoring) ═══
 
 CREATE TABLE brand_mentions (
