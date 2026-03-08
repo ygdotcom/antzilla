@@ -185,7 +185,7 @@ async def run_build_pipeline(business_id: int):
                 })
                 await db.commit()
 
-            # --- STEP 2: Builder ---
+            # --- STEP 2: Architecture + Copywriter + Builder ---
             logger.info("build_pipeline_step", step="builder", business=biz.name)
 
             class BuilderContext:
@@ -205,8 +205,46 @@ async def run_build_pipeline(business_id: int):
             builder = Builder()
             build_ctx = BuilderContext(business_id, biz.niche or "", scout_report, brand_kit)
 
-            steps = [
-                ("generate_architecture", builder.generate_architecture),
+            # Step 2a: Generate architecture
+            logger.info("builder_step", step="generate_architecture", business=biz.name)
+            arch_result = await builder.generate_architecture(build_ctx)
+            build_ctx._outputs["generate_architecture"] = arch_result if isinstance(arch_result, dict) else {}
+
+            # Step 2b: Copywriter generates FR+EN messages
+            logger.info("build_pipeline_step", step="copywriter", business=biz.name)
+            from src.agents.copywriter import Copywriter
+
+            class CopyContext:
+                def __init__(self, biz_id, arch, brand, niche, scout):
+                    self._input = {
+                        "business_id": biz_id,
+                        "architecture": arch,
+                        "brand_kit": brand,
+                        "niche": niche,
+                        "scout_report": scout,
+                    }
+                def workflow_input(self):
+                    return self._input
+                def step_output(self, name):
+                    return {}
+
+            copywriter = Copywriter()
+            copy_ctx = CopyContext(
+                business_id,
+                arch_result.get("architecture", {}),
+                brand_kit,
+                biz.niche or "",
+                scout_report,
+            )
+            copy_result = await copywriter.generate_copy(copy_ctx)
+
+            # Inject messages into builder context so code gen can reference them
+            build_ctx._input["messages_fr"] = copy_result.get("messages_fr", {})
+            build_ctx._input["messages_en"] = copy_result.get("messages_en", {})
+            build_ctx._input["app_name"] = copy_result.get("app_name", "")
+
+            # Step 2c-2h: Continue builder pipeline
+            remaining_steps = [
                 ("generate_code", builder.generate_code),
                 ("verify_rls", builder.verify_rls),
                 ("create_github_repo", builder.create_github_repo),
@@ -216,7 +254,7 @@ async def run_build_pipeline(business_id: int):
                 ("run_lighthouse", builder.run_lighthouse),
                 ("finalize", builder.finalize),
             ]
-            for step_name, step_fn in steps:
+            for step_name, step_fn in remaining_steps:
                 logger.info("builder_step", step=step_name, business=biz.name)
                 result = await step_fn(build_ctx)
                 build_ctx._outputs[step_name] = result if isinstance(result, dict) else {}

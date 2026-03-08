@@ -182,7 +182,10 @@ CRITICAL RULES:
 - Every table MUST have a RLS policy: CREATE POLICY ... USING (auth.uid() = user_id)
 - Dashboard shows pre-populated sample data, NEVER empty
 - All text via next-intl (useTranslations), never hardcoded
-- Bilingual FR/EN — messages files must be complete
+- Bilingual FR/EN — the Copywriter agent has already generated complete messages/fr.json
+  and messages/en.json. Use the translation keys from those files in your components.
+  Example: const t = useTranslations(); then t('hero.title'), t('features.f1_title'), etc.
+- DO NOT include messages/*.json in your output — they're handled separately
 - CAD charm pricing ($49, not $50)
 - NO import of './globals.css' — it's already in layout.tsx
 - Respond ONLY with valid JSON. No text before or after.
@@ -275,6 +278,18 @@ class Builder(BaseAgent):
     agent_name = "builder"
     default_model = "sonnet"
 
+    @staticmethod
+    def _flatten_keys(obj: dict, prefix: str = "") -> list[str]:
+        """Flatten nested dict keys to dot notation: {'a': {'b': 1}} → ['a.b']."""
+        keys = []
+        for k, v in obj.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                keys.extend(Builder._flatten_keys(v, full_key))
+            else:
+                keys.append(full_key)
+        return keys
+
     async def generate_architecture(self, context) -> dict:
         """Step 1: Claude Opus designs the app architecture."""
         input_data = context.workflow_input()
@@ -323,15 +338,20 @@ class Builder(BaseAgent):
         business_id = input_data.get("business_id")
         brand_kit = input_data.get("brand_kit", {})
         niche = input_data.get("niche", "")
+        messages_fr = input_data.get("messages_fr", {})
         arch = context.step_output("generate_architecture")
         architecture = arch.get("architecture", {})
 
         model_tier = await self.check_budget()
 
+        # Include the translation keys so Claude uses them in components
+        available_keys = list(self._flatten_keys(messages_fr)) if messages_fr else []
+
         user_payload = json.dumps({
             "architecture": architecture,
             "brand_kit": brand_kit,
             "niche": niche,
+            "translation_keys_available": available_keys[:200],
         }, default=str)[:30_000]
 
         response, cost = await call_claude(
@@ -682,6 +702,16 @@ class Builder(BaseAgent):
             if mig.get("content"):
                 fn = mig.get("filename", "002_tables.sql")
                 all_files.append({"path": f"supabase/migrations/{fn}", "content": mig["content"]})
+
+        # Add Copywriter messages files (FR + EN)
+        messages_fr = input_data.get("messages_fr", {})
+        messages_en = input_data.get("messages_en", {})
+        if messages_fr:
+            all_files.append({"path": "messages/fr.json", "content": json.dumps(messages_fr, ensure_ascii=False, indent=2)})
+            all_files.append({"path": "src/messages/fr.json", "content": json.dumps(messages_fr, ensure_ascii=False, indent=2)})
+        if messages_en:
+            all_files.append({"path": "messages/en.json", "content": json.dumps(messages_en, ensure_ascii=False, indent=2)})
+            all_files.append({"path": "src/messages/en.json", "content": json.dumps(messages_en, ensure_ascii=False, indent=2)})
 
         if not all_files:
             logger.warning("no_files_to_push")
