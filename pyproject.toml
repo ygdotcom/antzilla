@@ -1,7 +1,7 @@
 [project]
-name = "factory"
+name = "antzilla"
 version = "0.1.0"
-description = "Autonomous business factory — discovers, builds, markets, and operates micro-SaaS businesses"
+description = "Antzilla — autonomous business engine that discovers, builds, markets, and operates micro-SaaS businesses"
 requires-python = ">=3.12"
 dependencies = [
     # Orchestration

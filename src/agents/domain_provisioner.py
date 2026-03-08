@@ -241,7 +241,7 @@ class DomainProvisioner(BaseAgent):
                         "name": slug,
                         "private": True,
                         "auto_init": True,
-                        "description": f"Factory-generated business: {slug}",
+                        "description": f"Antzilla-generated business: {slug}",
                     },
                 )
                 resp.raise_for_status()

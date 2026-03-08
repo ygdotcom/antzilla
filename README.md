@@ -1,6 +1,6 @@
-# Factory
+# Antzilla
 
-**An autonomous business factory.** Discovers SaaS ideas that work in the US but don't exist in Canada, validates them with real ads, builds MVPs, markets them for $0, sells via cold email + AI voice calls, and operates them — all with ~2-3 hours/week of human oversight.
+**An autonomous business engine.** Discovers SaaS ideas that work in the US but don't exist in Canada, validates them with real ads, builds MVPs, markets them for $0, sells via cold email + AI voice calls, and operates them — all with ~2-3 hours/week of human oversight.
 
 32 autonomous agents orchestrated by [Hatchet](https://hatchet.run), running on a single GCP VM with Docker.
 
@@ -39,7 +39,7 @@
   DISCOVER          VALIDATE          BUILD            SELL              OPERATE
  ┌────────┐       ┌─────────┐      ┌────────┐      ┌─────────┐       ┌─────────┐
  │ Idea   │──▶──│ Validator│──▶──│Builder │──▶──│Distribtn│──▶──│Billing  │
- │Factory │  │   │  $150   │  │   │ Next.js│  │   │ Engine  │  │   │Support  │
+ │Antzilla│  │   │  $150   │  │   │ Next.js│  │   │ Engine  │  │   │Support  │
  │  +     │  │   │  ads    │  │   │ + RLS  │  │   │ 5 sub-  │  │   │Referral │
  │ Deep   │  │   │ GO/KILL │  │   │ + i18n │  │   │ agents  │  │   │Upsell   │
  │ Scout  │  │   └─────────┘  │   └────────┘  │   └─────────┘  │   └─────────┘

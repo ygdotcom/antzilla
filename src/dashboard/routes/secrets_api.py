@@ -154,7 +154,7 @@ async def _test_stripe(value: str) -> dict:
 
 async def _test_slack(value: str) -> dict:
     async with httpx.AsyncClient(timeout=10) as c:
-        resp = await c.post(value, json={"text": ":white_check_mark: Factory connected!"})
+        resp = await c.post(value, json={"text": ":white_check_mark: Antzilla connected!"})
         return {"status": "ok"} if resp.status_code == 200 else {"status": "failed", "error": f"HTTP {resp.status_code}"}
 
 
@@ -405,7 +405,7 @@ async def reset_factory(user: str = Depends(verify_credentials)):
             except Exception:
                 pass
         await db.commit()
-    return HTMLResponse('<span class="text-red-400 text-sm font-medium">Factory reset complete. All data cleared.</span>')
+    return HTMLResponse('<span class="text-red-400 text-sm font-medium">Antzilla reset complete. All data cleared.</span>')
 
 
 @router.get("/api/export")

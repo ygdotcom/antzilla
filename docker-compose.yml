@@ -100,7 +100,7 @@ services:
       - hatchet_config:/hatchet/config
       - hatchet_certs:/hatchet/certs
 
-  # ── Factory Worker (Python agents) ──
+  # ── Antzilla Worker (Python agents) ──
   factory-worker:
     build: .
     restart: on-failure

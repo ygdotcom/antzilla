@@ -28,7 +28,7 @@ from src.dashboard.deps import (
 
 logger = structlog.get_logger()
 
-app = FastAPI(title="Factory Dashboard", docs_url=None, redoc_url=None)
+app = FastAPI(title="Antzilla Dashboard", docs_url=None, redoc_url=None)
 
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():

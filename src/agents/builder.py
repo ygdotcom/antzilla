@@ -492,7 +492,7 @@ class Builder(BaseAgent):
                 headers=headers,
                 json={
                     "name": repo_name,
-                    "description": f"Factory-built SaaS: {repo_name}",
+                    "description": f"Antzilla-built SaaS: {repo_name}",
                     "private": True,
                     "auto_init": True,
                 },
@@ -504,7 +504,7 @@ class Builder(BaseAgent):
                     headers=headers,
                     json={
                         "name": repo_name,
-                        "description": f"Factory-built SaaS: {repo_name}",
+                        "description": f"Antzilla-built SaaS: {repo_name}",
                         "private": True,
                         "auto_init": True,
                     },

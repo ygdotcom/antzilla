@@ -1,4 +1,4 @@
-# AUTONOMOUS BUSINESS FACTORY — Complete Technical Specification
+# ANTZILLA — Autonomous Business Engine — Complete Technical Specification
 
 ## For: Cursor AI / Claude Code
 ## Stack: Hatchet + Python + Postgres + Docker

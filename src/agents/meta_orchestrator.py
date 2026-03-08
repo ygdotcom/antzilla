@@ -212,7 +212,7 @@ async def _send_slack_digest(decisions: dict, businesses: list[dict]) -> None:
     triggers = decisions.get("agent_triggers", [])
 
     lines = [
-        f":factory: *Factory Daily Digest* — {datetime.now(tz=ET).strftime('%A %B %d, %Y')}",
+        f":ant: *Antzilla Daily Digest* — {datetime.now(tz=ET).strftime('%A %B %d, %Y')}",
         f"Businesses: *{biz_count}* | Total MRR: *${total_mrr:,.2f}*",
         "",
         "*Top priorities:*",
