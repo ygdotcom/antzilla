@@ -380,6 +380,14 @@ class IdeaFactory(BaseAgent):
 
             await db.commit()
 
+        # Notify Slack about new ideas
+        for idea, idea_id in zip(qualified, saved_ids):
+            try:
+                from src.slack import notify_idea_discovered
+                await notify_idea_discovered(idea.get("name", ""), idea.get("score", 0), idea_id)
+            except Exception:
+                pass
+
         top_3 = sorted(qualified, key=lambda x: x.get("score", 0), reverse=True)[:3]
         top_3_summary = [
             {"name": i.get("name"), "score": i.get("score"), "niche": i.get("niche")}
@@ -448,8 +456,18 @@ class IdeaFactory(BaseAgent):
                             })
                             await db.commit()
                         logger.info("deep_scout_go", name=idea.get("name"), idea_id=idea_id)
+                        try:
+                            from src.slack import notify_approval_needed
+                            await notify_approval_needed(idea.get("name", ""), idea_id)
+                        except Exception:
+                            pass
                     else:
                         logger.info("deep_scout_nogo", name=idea.get("name"), idea_id=idea_id)
+                        try:
+                            from src.slack import notify_idea_validated
+                            await notify_idea_validated(idea.get("name", ""), idea_id, "nogo")
+                        except Exception:
+                            pass
 
                 except Exception as scout_exc:
                     logger.error("deep_scout_failed", idea_id=idea_id, error=str(scout_exc))

@@ -148,6 +148,13 @@ async def run_build_pipeline(business_id: int):
                 await db.execute(sa_text(
                     "UPDATE businesses SET status = 'building', updated_at = NOW() WHERE id = :id"
                 ), {"id": business_id})
+
+            # Notify Slack
+            try:
+                from src.slack import notify_build_started
+                await notify_build_started(biz.name, business_id)
+            except Exception:
+                pass
                 await db.execute(sa_text(
                     "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
                     "VALUES ('build_pipeline', 'pipeline_started', :result, 'success', :biz_id)"
@@ -309,6 +316,22 @@ async def run_build_pipeline(business_id: int):
                         repo=finalize_result.get("github_repo"),
                         design_score=qa_result.get("overall_score"))
 
+            # Notify Slack: build complete
+            try:
+                from src.slack import notify_build_complete
+                total_cost = sum(
+                    build_ctx._outputs.get(s, {}).get("cost_usd", 0)
+                    for s in ["generate_architecture", "generate_code"]
+                ) + brand_result.get("cost_usd", 0) + copy_result.get("cost_usd", 0)
+                await notify_build_complete(
+                    biz.name,
+                    finalize_result.get("github_repo", ""),
+                    deployment_url,
+                    total_cost,
+                )
+            except Exception:
+                pass
+
         except Exception as exc:
             logger.error("build_pipeline_failed", business_id=business_id,
                          error=str(exc), error_type=type(exc).__name__)
@@ -319,6 +342,13 @@ async def run_build_pipeline(business_id: int):
                         "VALUES ('build_pipeline', 'pipeline_failed', :result, 'error', :biz_id)"
                     ), {"result": json.dumps({"error": str(exc)}), "biz_id": business_id})
                     await db.commit()
+            except Exception:
+                pass
+
+            # Notify Slack: build failed
+            try:
+                from src.slack import notify_build_failed
+                await notify_build_failed(biz.name if biz else f"business_{business_id}", str(exc))
             except Exception:
                 pass
 

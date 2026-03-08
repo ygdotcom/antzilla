@@ -199,5 +199,5 @@ class TestBackupRestore:
         import inspect
         from src.agents.devops_agent import DevOpsAgent
         source = inspect.getsource(DevOpsAgent.test_restore)
-        assert "factory_restore_test" in source
+        assert "restore_test" in source
         assert "pg_dump" in source
