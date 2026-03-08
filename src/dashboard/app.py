@@ -320,17 +320,19 @@ async def run_build_pipeline(business_id: int):
             try:
                 from src.slack import notify_build_complete
                 total_cost = sum(
-                    build_ctx._outputs.get(s, {}).get("cost_usd", 0)
+                    build_ctx._outputs.get(s, {}).get("cost_usd", 0) or 0
                     for s in ["generate_architecture", "generate_code"]
-                ) + brand_result.get("cost_usd", 0) + copy_result.get("cost_usd", 0)
+                )
+                total_cost += (brand_result.get("cost_usd", 0) or 0)
+                total_cost += (copy_result.get("cost_usd", 0) or 0) if copy_result else 0
                 await notify_build_complete(
                     biz.name,
                     finalize_result.get("github_repo", ""),
                     deployment_url,
                     total_cost,
                 )
-            except Exception:
-                pass
+            except Exception as slack_exc:
+                logger.warning("slack_notify_failed", error=str(slack_exc))
 
         except Exception as exc:
             logger.error("build_pipeline_failed", business_id=business_id,
@@ -348,9 +350,10 @@ async def run_build_pipeline(business_id: int):
             # Notify Slack: build failed
             try:
                 from src.slack import notify_build_failed
-                await notify_build_failed(biz.name if biz else f"business_{business_id}", str(exc))
-            except Exception:
-                pass
+                biz_name = biz.name if biz else f"business_{business_id}"
+                await notify_build_failed(biz_name, str(exc))
+            except Exception as slack_exc:
+                logger.warning("slack_notify_failed", error=str(slack_exc))
 
     import asyncio
     asyncio.create_task(_pipeline())
