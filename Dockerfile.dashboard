@@ -6,6 +6,8 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir .
 
 COPY src/ src/
+COPY prompts/ prompts/
+COPY template-repo/ template-repo/
 
 EXPOSE 9000
 

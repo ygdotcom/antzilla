@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+.venv
+venv
+.git
+.pytest_cache
+.mypy_cache
+.ruff_cache
+template-repo/node_modules
+template-repo/.next
+template-repo/package-lock.json

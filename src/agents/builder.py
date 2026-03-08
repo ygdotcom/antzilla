@@ -403,8 +403,74 @@ class Builder(BaseAgent):
         )
         return {"repo": full_name, "created": True}
 
+    async def push_template(self, context) -> dict:
+        """Step 5: Push the template-repo as the project base to GitHub."""
+        import base64
+        from pathlib import Path
+
+        repo_info = context.step_output("create_github_repo")
+        github_repo = repo_info.get("repo", "")
+        if not github_repo:
+            return {"pushed": 0, "error": "No repo"}
+
+        token = settings.get("GITHUB_TOKEN")
+        template_dir = Path(__file__).resolve().parent.parent.parent / "template-repo"
+
+        if not template_dir.exists():
+            logger.warning("template_repo_missing", path=str(template_dir))
+            return {"pushed": 0, "error": "template-repo/ not found"}
+
+        skip = {"node_modules", ".next", "package-lock.json", "next-env.d.ts", ".DS_Store"}
+        files_to_push = []
+        for f in sorted(template_dir.rglob("*")):
+            if f.is_dir():
+                continue
+            rel = str(f.relative_to(template_dir))
+            if any(s in rel for s in skip):
+                continue
+            try:
+                content = f.read_text(encoding="utf-8")
+                files_to_push.append({"path": rel, "content": content})
+            except (UnicodeDecodeError, OSError):
+                continue
+
+        pushed = 0
+        async with httpx.AsyncClient(timeout=20) as client:
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+            for item in files_to_push:
+                try:
+                    existing = await client.get(
+                        f"https://api.github.com/repos/{github_repo}/contents/{item['path']}",
+                        headers=headers,
+                    )
+                    payload = {
+                        "message": f"chore: template {item['path']}",
+                        "content": base64.b64encode(item["content"].encode()).decode(),
+                    }
+                    if existing.status_code == 200:
+                        payload["sha"] = existing.json().get("sha")
+                    resp = await client.put(
+                        f"https://api.github.com/repos/{github_repo}/contents/{item['path']}",
+                        headers=headers,
+                        json=payload,
+                    )
+                    if resp.status_code in (200, 201):
+                        pushed += 1
+                except Exception as exc:
+                    logger.warning("template_push_failed", file=item["path"], error=str(exc))
+
+        input_data = context.workflow_input()
+        await self.log_execution(
+            action="push_template",
+            result={"pushed": pushed, "total": len(files_to_push), "repo": github_repo},
+            business_id=input_data.get("business_id"),
+        )
+        logger.info("template_pushed", pushed=pushed, total=len(files_to_push))
+        return {"pushed": pushed, "total": len(files_to_push)}
+
     async def push_to_github(self, context) -> dict:
-        """Step 5: Push generated code to the GitHub repo."""
+        """Step 6: Push Claude-generated code on top of the template."""
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
         repo_info = context.step_output("create_github_repo")
@@ -680,6 +746,10 @@ def register(hatchet_instance):
     @wf.task(execution_timeout="5m", retries=2)
     async def create_github_repo(input, ctx):
         return await agent.create_github_repo(ctx)
+
+    @wf.task(execution_timeout="10m", retries=1)
+    async def push_template(input, ctx):
+        return await agent.push_template(ctx)
 
     @wf.task(execution_timeout="5m", retries=2)
     async def push_to_github(input, ctx):

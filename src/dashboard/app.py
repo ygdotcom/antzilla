@@ -114,8 +114,8 @@ AGENT_RUNNERS = {
     ]),
     "builder": ("src.agents.builder", "Builder", [
         "generate_architecture", "generate_code", "verify_rls",
-        "create_github_repo", "push_to_github", "deploy_vercel",
-        "run_lighthouse", "finalize"
+        "create_github_repo", "push_template", "push_to_github",
+        "deploy_vercel", "run_lighthouse", "finalize"
     ]),
 }
 
@@ -210,6 +210,7 @@ async def run_build_pipeline(business_id: int):
                 ("generate_code", builder.generate_code),
                 ("verify_rls", builder.verify_rls),
                 ("create_github_repo", builder.create_github_repo),
+                ("push_template", builder.push_template),
                 ("push_to_github", builder.push_to_github),
                 ("deploy_vercel", builder.deploy_vercel),
                 ("run_lighthouse", builder.run_lighthouse),
