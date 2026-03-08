@@ -28,7 +28,7 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 <div class="w-24 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                  <div class="h-full rounded-full {% if a.success_rate >= 95 %}bg-brand{% elif a.success_rate >= 80 %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ a.success_rate|min(100) }}%"></div>
+                  <div class="h-full rounded-full {% if a.success_rate >= 95 %}bg-brand{% elif a.success_rate >= 80 %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ [a.success_rate, 100]|min }}%"></div>
                 </div>
                 <span class="{% if a.success_rate >= 95 %}text-brand{% elif a.success_rate >= 80 %}text-yellow-400{% else %}text-red-500{% endif %} text-sm">{{ a.success_rate }}%</span>
               </div>

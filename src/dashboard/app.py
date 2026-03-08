@@ -82,12 +82,13 @@ async def logout():
     return response
 
 
-from src.dashboard.routes import overview, businesses, agents, budget, decisions, ideas, knowledge, leads, secrets_api
+from src.dashboard.routes import overview, businesses, agents, budget, console, decisions, ideas, knowledge, leads, secrets_api
 
 app.include_router(overview.router)
 app.include_router(businesses.router)
 app.include_router(agents.router)
 app.include_router(budget.router)
+app.include_router(console.router)
 app.include_router(decisions.router)
 app.include_router(ideas.router)
 app.include_router(knowledge.router)
