@@ -314,7 +314,7 @@ class TestResearchMarket:
 
 class TestDiscoverChannels:
     @pytest.mark.asyncio
-    async def test_queries_sparktoro(self, agent):
+    async def test_calls_channel_discovery(self, agent):
         ctx = MagicMock()
         ctx.step_output = MagicMock(return_value={
             "idea_data": {"niche": "construction quoting"},
@@ -322,55 +322,15 @@ class TestDiscoverChannels:
             "idea_name": "Quote OS",
         })
 
-        with (
-            patch("src.agents.deep_scout.httpx.AsyncClient") as mock_cls,
-            patch("src.agents.deep_scout.settings") as mock_settings,
-        ):
-            mock_settings.SPARKTORO_API_KEY = "test_key"
-            mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.text = "<html></html>"
-            mock_resp.json = MagicMock(return_value={"websites": [], "social_accounts": []})
-            mock_resp.raise_for_status = MagicMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.post = AsyncMock(return_value=mock_resp)
-            mock_cls.return_value = mock_client
+        mock_channels = [
+            {"platform": "reddit", "name": "r/roofing", "impact": 7, "confidence": 8, "ease": 6, "ice": 336},
+        ]
 
+        with patch("src.agents.distribution.channel_discovery.discover_channels", new_callable=AsyncMock, return_value=mock_channels):
             result = await agent.discover_channels(ctx)
 
-        assert "sparktoro_data" in result
-        assert result["sparktoro_data"]["status"] == "ok"
-
-    @pytest.mark.asyncio
-    async def test_skips_sparktoro_without_key(self, agent):
-        ctx = MagicMock()
-        ctx.step_output = MagicMock(return_value={
-            "idea_data": {},
-            "niche": "test",
-            "idea_name": "Test",
-        })
-
-        with (
-            patch("src.agents.deep_scout.httpx.AsyncClient") as mock_cls,
-            patch("src.agents.deep_scout.settings") as mock_settings,
-        ):
-            mock_settings.SPARKTORO_API_KEY = ""
-            mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.text = "<html></html>"
-            mock_resp.raise_for_status = MagicMock()
-            mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_cls.return_value = mock_client
-
-            result = await agent.discover_channels(ctx)
-
-        assert result["sparktoro_data"]["status"] == "skipped"
+        assert "ranked_channels" in result
+        assert result["channels_found"] >= 0
 
 
 class TestGenerateGTMPlaybook:
@@ -381,7 +341,7 @@ class TestGenerateGTMPlaybook:
             side_effect=lambda name: {
                 "research_market": {"idea_data": {}, "niche": "test"},
                 "analyze_us_competitor": {"us_equivalent": "", "us_url": "", "page_content": {}},
-                "discover_channels": {"sparktoro_data": {}, "reddit_search": "", "facebook_search": "", "ecosystem_search": ""},
+                "discover_channels": {"ranked_channels": [], "channels_found": 0},
                 "research_regulations": {"regulations_search": "", "bilingual_search": "", "casl_search": ""},
             }[name]
         )

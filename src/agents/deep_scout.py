@@ -7,8 +7,8 @@ deep dive across 7 steps, producing TWO key outputs:
 2. GTM Playbook (JSON) — saved to gtm_playbooks table, consumed by ALL
    downstream distribution agents (see §13 in SPEC.md)
 
-Step 3 (discover_channels) queries SparkToro for audience intelligence and
-scores channels with ICE (Impact × Confidence × Ease).
+Step 3 (discover_channels) uses Claude reasoning + Serper validation +
+Reddit search for channel discovery, scored with ICE.
 """
 
 from __future__ import annotations
@@ -35,36 +35,6 @@ GTM_SEPARATOR = "---GTM_PLAYBOOK_JSON---"
 def _load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
-
-# ── SparkToro audience intelligence ──────────────────────────────────────────
-
-
-async def _query_sparktoro(client: httpx.AsyncClient, icp_description: str) -> dict:
-    """Query SparkToro API for audience intelligence on the ICP.
-
-    Returns websites, social accounts, podcasts, subreddits, hashtags the
-    target audience engages with.  Falls back to an empty result if the
-    API key is not configured or the call fails.
-    """
-    if not settings.SPARKTORO_API_KEY:
-        logger.info("sparktoro_skip", reason="no API key configured")
-        return {"status": "skipped", "data": None}
-
-    try:
-        resp = await client.post(
-            "https://api.sparktoro.com/v1/audience",
-            headers={
-                "Authorization": f"Bearer {settings.SPARKTORO_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={"query": icp_description, "limit": 50},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return {"status": "ok", "data": resp.json()}
-    except Exception as exc:
-        logger.warning("sparktoro_error", error=str(exc))
-        return {"status": f"error: {exc}", "data": None}
 
 
 def _score_channels_ice(channels_raw: list[dict]) -> list[dict]:
@@ -233,35 +203,22 @@ class DeepScout(BaseAgent):
         }
 
     async def discover_channels(self, context) -> dict:
-        """Step 3: Query SparkToro + search for associations, score with ICE."""
+        """Step 3: Claude reasoning + Serper validation + Reddit search for channel discovery."""
+        from src.agents.distribution.channel_discovery import discover_channels as _discover
+
         market = context.step_output("research_market")
-        idea_data = market.get("idea_data", {})
         niche = market.get("niche", "")
-        idea_name = market.get("idea_name", "")
 
         icp_description = (
             f"small {niche} business owners and contractors in Quebec, Canada"
         )
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            sparktoro = await _query_sparktoro(client, icp_description)
-
-            reddit_search = await _search_google_ca(
-                client, f"site:reddit.com {niche} software"
-            )
-            facebook_search = await _search_google_ca(
-                client, f"site:facebook.com/groups {niche} Quebec"
-            )
-            ecosystem_search = await _search_google_ca(
-                client, f"{niche} QuickBooks Shopify integration marketplace"
-            )
+        ranked_channels = await _discover(icp_description, niche=niche)
 
         return {
-            "sparktoro_data": sparktoro,
-            "reddit_search": reddit_search,
-            "facebook_search": facebook_search,
-            "ecosystem_search": ecosystem_search,
+            "ranked_channels": ranked_channels,
             "icp_description": icp_description,
+            "channels_found": len(ranked_channels),
         }
 
     async def research_regulations(self, context) -> dict:
@@ -323,10 +280,8 @@ class DeepScout(BaseAgent):
                 "pages": us_competitor.get("page_content", {}),
             },
             "channel_research": {
-                "sparktoro": channels.get("sparktoro_data", {}),
-                "reddit": channels.get("reddit_search", ""),
-                "facebook": channels.get("facebook_search", ""),
-                "ecosystems": channels.get("ecosystem_search", ""),
+                "ranked_channels": channels.get("ranked_channels", []),
+                "channels_found": channels.get("channels_found", 0),
             },
             "regulations": regulations,
             "prior_knowledge_count": len(prior_knowledge),

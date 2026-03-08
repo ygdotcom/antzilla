@@ -40,7 +40,7 @@ CRITIQUE — le Brand Agent utilisera cette section:
 - Pain points quotidiens (verbatim si possible)
 - Signaux d'achat (quels événements indiquent qu'ils ont besoin du produit MAINTENANT?)
 - Stack technique actuel (quel logiciel utilisent-ils? Excel? Papier? Un concurrent?)
-- Où ils traînent en ligne (SparkToro data si disponible)
+- Où ils traînent en ligne (données de channel discovery)
 - Comment ils préfèrent être contactés (email? téléphone? SMS? Facebook?)
 
 ## Channel Strategy (ICE scored)

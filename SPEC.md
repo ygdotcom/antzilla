@@ -316,8 +316,8 @@ referral:
 - **Week 3-4:** Agent sends autonomously for low-value leads (<$100 ACV expected). Human reviews high-value.
 - **Month 2+:** Full autonomy for validated ICP + messaging combos. Human only reviews new verticals or failing sequences (reply rate < 2%).
 
-**D) CHANNEL DISCOVERY is automated via SparkToro + Claude:**
-Deep Scout queries SparkToro's audience intelligence with the ICP description → gets back which websites, social platforms, podcasts, YouTube channels, subreddits, and Facebook groups the audience engages with → Claude scores each channel using ICE (Impact × Confidence × Ease) → top 3 go into the playbook config. This replaces hardcoded channel assumptions.
+**D) CHANNEL DISCOVERY is automated via Claude + Serper + Reddit API:**
+Deep Scout queries Claude with the ICP description for channel reasoning, validates suggestions via Serper Google search and Reddit API, then scores using ICE framework (Impact × Confidence × Ease) → top 3 go into the playbook config. This replaces hardcoded channel assumptions.
 
 **E) CANADIAN LEAD SOURCES (free/cheap, built into Lead Pipeline Agent):**
 - **RBQ Open Data** — 50,000+ active contractor licences in Quebec, free (Creative Commons 4.0). Includes name, address, NEQ, licence type.
@@ -1372,7 +1372,7 @@ Réponds UNIQUEMENT en JSON array:
 **Steps DAG:**
 1. `research_market` — Scrape: Statistique Canada (NAICS codes), provincial business registries, Google.ca for competitors, industry associations.
 2. `analyze_us_competitor` — Scrape the US equivalent's website thoroughly: pricing page, features page, about page, blog, testimonials. Screenshot or save key pages for Brand Agent.
-3. `discover_channels` — Query SparkToro API with ICP description (e.g., "small roofing contractors in Quebec") to get audience intelligence: websites visited, social accounts followed, podcasts, subreddits, Facebook groups. Score each channel using ICE (Impact × Confidence × Ease, 1-10 each). Also: search for industry associations using Associations Canada database + Google ("[industry] association Quebec/Canada"), identify relevant app marketplaces/ecosystems (QuickBooks, Shopify, Jobber, etc.), and find community gathering spots (Facebook Groups, forums, trade shows).
+3. `discover_channels` — Claude reasoning about ICP channels + Serper Google validation + Reddit API search for active subreddits. Score each channel using ICE (Impact × Confidence × Ease, 1-10 each). Also: search for industry associations using Google ("[industry] association Quebec/Canada"), identify relevant app marketplaces/ecosystems (QuickBooks, Shopify, Jobber, etc.), and find community gathering spots (Facebook Groups, forums, trade shows).
 4. `research_regulations` — Search for provincial regulations, bilingual requirements, industry certifications, CASL requirements.
 5. `generate_gtm_playbook` — Using all research, generate the GTM Playbook YAML config (see §13 above). This is the MOST IMPORTANT output — it configures ALL downstream sales/growth agents for this business. Include: ICP params, ranked channels, lead sources, association list, ecosystem integrations, messaging frameworks, signal definitions, outreach cadence, and referral program design.
 6. `synthesize_report` — Send all research to Claude Opus. Generate comprehensive Scout Report (markdown). Include US competitor branding analysis.
@@ -1420,7 +1420,7 @@ CRITIQUE — le Brand Agent utilisera cette section:
 - Pain points quotidiens (verbatim si possible)
 - Signaux d'achat (quels événements indiquent qu'ils ont besoin du produit MAINTENANT?)
 - Stack technique actuel (quel logiciel utilisent-ils? Excel? Papier? Un concurrent?)
-- Où ils traînent en ligne (SparkToro data si disponible)
+- Où ils traînent en ligne (channel discovery data)
 - Comment ils préfèrent être contactés (email? téléphone? SMS? Facebook?)
 
 ## Channel Strategy (ICE scored)
@@ -2488,7 +2488,6 @@ Step 4: "Outreach" (required to send emails/calls)
 - Reddit credentials
 
 Step 5: "Optional" (enhance but not required)
-- SparkToro API Key
 - Syften API Key
 - DataForSEO API Key
 - Google Ads credentials
@@ -3082,7 +3081,6 @@ For backwards compatibility, `settings.get("KEY_NAME")` checks the DB first, the
 | Lead Gen | APOLLO_API_KEY | Email enrichment |
 | Lead Gen | HUNTER_API_KEY | Email enrichment (fallback) |
 | Lead Gen | ZEROBOUNCE_API_KEY | Email verification |
-| Lead Gen | SPARKTORO_API_KEY | Channel discovery |
 | Lead Gen | SYFTEN_API_KEY | Community monitoring |
 | Lead Gen | DATAFORSEO_API_KEY | Keyword research |
 | Infrastructure | NAMECHEAP_API_KEY | Domain purchase |

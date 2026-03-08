@@ -50,7 +50,6 @@ SECRETS_SCHEMA = [
             {"key": "APOLLO_API_KEY", "name": "Apollo API Key", "placeholder": ""},
             {"key": "HUNTER_API_KEY", "name": "Hunter API Key", "placeholder": ""},
             {"key": "ZEROBOUNCE_API_KEY", "name": "ZeroBounce API Key", "placeholder": ""},
-            {"key": "SPARKTORO_API_KEY", "name": "SparkToro API Key", "placeholder": ""},
         ],
     },
     {
