@@ -171,25 +171,25 @@ class BudgetGuardianAgent(BaseAgent):
         return {"businesses": cash_flows, "total_burn": round(total_burn, 2)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register BudgetGuardianAgent as a Hatchet workflow."""
+    agent = BudgetGuardianAgent()
+    wf = hatchet_instance.workflow(name="budget-guardian", on_crons=["0 * * * *"])
 
-    @hatchet_instance.workflow(name="budget-guardian", on_crons=["0 * * * *"])
-    class _RegisteredBudgetGuardian(BudgetGuardianAgent):
-        @hatchet_instance.task(execution_timeout="1m", retries=2)
-        async def aggregate_costs(self, context) -> dict:
-            return await BudgetGuardianAgent.aggregate_costs(self, context)
+    @wf.task(execution_timeout="1m", retries=2)
+    async def aggregate_costs(input, ctx):
+        return await agent.aggregate_costs(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def check_limits(self, context) -> dict:
-            return await BudgetGuardianAgent.check_limits(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def check_limits(input, ctx):
+        return await agent.check_limits(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def throttle_if_needed(self, context) -> dict:
-            return await BudgetGuardianAgent.throttle_if_needed(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def throttle_if_needed(input, ctx):
+        return await agent.throttle_if_needed(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def alert(self, context) -> dict:
-            return await BudgetGuardianAgent.alert(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def alert(input, ctx):
+        return await agent.alert(ctx)
 
-    return _RegisteredBudgetGuardian
+    return wf

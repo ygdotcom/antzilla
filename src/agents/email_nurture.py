@@ -267,31 +267,28 @@ class EmailNurture(BaseAgent):
         return {"emails_sent": sent}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = EmailNurture()
+    wf = hatchet_instance.workflow(name="email-nurture", on_crons=["0 14 * * 1,4"])
 
-    @hatchet_instance.workflow(
-        name="email-nurture",
-        on_crons=["0 14 * * 1,4"],
-    )
-    class _Registered(EmailNurture):
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def identify_recipients(self, context) -> dict:
-            return await EmailNurture.identify_recipients(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def identify_recipients(input, ctx):
+        return await agent.identify_recipients(ctx)
 
-        @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def generate_email(self, context) -> dict:
-            return await EmailNurture.generate_email(self, context)
+    @wf.task(execution_timeout="8m", retries=1)
+    async def generate_email(input, ctx):
+        return await agent.generate_email(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def check_frequency_cap(self, context) -> dict:
-            return await EmailNurture.check_frequency_cap(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def check_frequency_cap(input, ctx):
+        return await agent.check_frequency_cap(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def send_email(self, context) -> dict:
-            return await EmailNurture.send_email(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def send_email(input, ctx):
+        return await agent.send_email(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def log(self, context) -> dict:
-            return await EmailNurture.log(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def log(input, ctx):
+        return await agent.log(ctx)
 
-    return _Registered
+    return wf

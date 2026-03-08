@@ -300,24 +300,24 @@ class ReferralAgent(BaseAgent):
         return {"nudged": nudged, "eligible": len(non_sharers)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = ReferralAgent()
+    wf = hatchet_instance.workflow(name="referral-agent")
 
-    @hatchet_instance.workflow(name="referral-agent")
-    class _Registered(ReferralAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def nps_trigger(self, context) -> dict:
-            return await ReferralAgent.nps_trigger(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def nps_trigger(input, ctx):
+        return await agent.nps_trigger(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def track_and_reward(self, context) -> dict:
-            return await ReferralAgent.track_and_reward(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def track_and_reward(input, ctx):
+        return await agent.track_and_reward(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def identify_ambassadors(self, context) -> dict:
-            return await ReferralAgent.identify_ambassadors(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def identify_ambassadors(input, ctx):
+        return await agent.identify_ambassadors(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def nudge_non_sharers(self, context) -> dict:
-            return await ReferralAgent.nudge_non_sharers(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def nudge_non_sharers(input, ctx):
+        return await agent.nudge_non_sharers(ctx)
 
-    return _Registered
+    return wf

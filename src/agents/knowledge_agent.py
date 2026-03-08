@@ -252,28 +252,28 @@ class KnowledgeAgent(BaseAgent):
         return {"meta_insights": stored, "cost_usd": cost}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = KnowledgeAgent()
+    wf = hatchet_instance.workflow(name="knowledge-agent", on_crons=["0 9 * * 0"])
 
-    @hatchet_instance.workflow(name="knowledge-agent", on_crons=["0 9 * * 0"])
-    class _Registered(KnowledgeAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def scan_outreach_experiments(self, context) -> dict:
-            return await KnowledgeAgent.scan_outreach_experiments(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def scan_outreach_experiments(input, ctx):
+        return await agent.scan_outreach_experiments(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def scan_channel_performance(self, context) -> dict:
-            return await KnowledgeAgent.scan_channel_performance(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def scan_channel_performance(input, ctx):
+        return await agent.scan_channel_performance(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def calibrate_idea_scoring(self, context) -> dict:
-            return await KnowledgeAgent.calibrate_idea_scoring(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def calibrate_idea_scoring(input, ctx):
+        return await agent.calibrate_idea_scoring(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def extract_churn_reasons(self, context) -> dict:
-            return await KnowledgeAgent.extract_churn_reasons(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def extract_churn_reasons(input, ctx):
+        return await agent.extract_churn_reasons(ctx)
 
-        @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def synthesize_with_claude(self, context) -> dict:
-            return await KnowledgeAgent.synthesize_with_claude(self, context)
+    @wf.task(execution_timeout="10m", retries=1)
+    async def synthesize_with_claude(input, ctx):
+        return await agent.synthesize_with_claude(ctx)
 
-    return _Registered
+    return wf

@@ -409,33 +409,33 @@ class DeepScout(BaseAgent):
         }
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register DeepScout as a Hatchet workflow (on-demand, not cron)."""
+    agent = DeepScout()
+    wf = hatchet_instance.workflow(name="deep-scout")
 
-    @hatchet_instance.workflow(name="deep-scout")
-    class _RegisteredDeepScout(DeepScout):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def research_market(self, context) -> dict:
-            return await DeepScout.research_market(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def research_market(input, ctx):
+        return await agent.research_market(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def analyze_us_competitor(self, context) -> dict:
-            return await DeepScout.analyze_us_competitor(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def analyze_us_competitor(input, ctx):
+        return await agent.analyze_us_competitor(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def discover_channels(self, context) -> dict:
-            return await DeepScout.discover_channels(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def discover_channels(input, ctx):
+        return await agent.discover_channels(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def research_regulations(self, context) -> dict:
-            return await DeepScout.research_regulations(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def research_regulations(input, ctx):
+        return await agent.research_regulations(ctx)
 
-        @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def generate_gtm_playbook(self, context) -> dict:
-            return await DeepScout.generate_gtm_playbook(self, context)
+    @wf.task(execution_timeout="10m", retries=2)
+    async def generate_gtm_playbook(input, ctx):
+        return await agent.generate_gtm_playbook(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def save_and_recommend(self, context) -> dict:
-            return await DeepScout.save_and_recommend(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def save_and_recommend(input, ctx):
+        return await agent.save_and_recommend(ctx)
 
-    return _RegisteredDeepScout
+    return wf

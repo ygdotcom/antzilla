@@ -145,24 +145,24 @@ class UpsellAgent(BaseAgent):
         return {"tracked": True}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = UpsellAgent()
+    wf = hatchet_instance.workflow(name="upsell-agent", on_crons=["0 15 * * 1"])
 
-    @hatchet_instance.workflow(name="upsell-agent", on_crons=["0 15 * * 1"])
-    class _Registered(UpsellAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def analyze_usage(self, context) -> dict:
-            return await UpsellAgent.analyze_usage(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def analyze_usage(input, ctx):
+        return await agent.analyze_usage(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def generate_offer(self, context) -> dict:
-            return await UpsellAgent.generate_offer(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def generate_offer(input, ctx):
+        return await agent.generate_offer(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def send_offer(self, context) -> dict:
-            return await UpsellAgent.send_offer(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def send_offer(input, ctx):
+        return await agent.send_offer(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def track_conversion(self, context) -> dict:
-            return await UpsellAgent.track_conversion(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def track_conversion(input, ctx):
+        return await agent.track_conversion(ctx)
 
-    return _Registered
+    return wf

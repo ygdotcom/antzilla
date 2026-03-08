@@ -218,18 +218,19 @@ class SupportAgent(BaseAgent):
         return {"tickets_scanned": len(tickets)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = SupportAgent()
 
-    @hatchet_instance.workflow(name="support-agent")
-    class _Registered(SupportAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def handle_ticket(self, context) -> dict:
-            return await SupportAgent.handle_ticket(self, context)
+    wf_ticket = hatchet_instance.workflow(name="support-agent")
 
-    @hatchet_instance.workflow(name="support-churn-check", on_crons=["0 14 * * *"])
-    class _ChurnCheck(SupportAgent):
-        @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def check_churn_signals(self, context) -> dict:
-            return await SupportAgent.check_churn_signals(self, context)
+    @wf_ticket.task(execution_timeout="5m", retries=2)
+    async def handle_ticket(input, ctx):
+        return await agent.handle_ticket(ctx)
 
-    return _Registered, _ChurnCheck
+    wf_churn = hatchet_instance.workflow(name="support-churn-check", on_crons=["0 14 * * *"])
+
+    @wf_churn.task(execution_timeout="8m", retries=1)
+    async def check_churn_signals(input, ctx):
+        return await agent.check_churn_signals(ctx)
+
+    return wf_ticket, wf_churn

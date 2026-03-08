@@ -229,12 +229,12 @@ class SignalMonitor(BaseAgent):
         return {"businesses_scanned": len(results), "signals_detected": total_signals, "details": results}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = SignalMonitor()
+    wf = hatchet_instance.workflow(name="signal-monitor", on_crons=["0 */4 * * *"])
 
-    @hatchet_instance.workflow(name="signal-monitor", on_crons=["0 */4 * * *"])
-    class _Registered(SignalMonitor):
-        @hatchet_instance.task(execution_timeout="12m", retries=1)
-        async def scan_signals(self, context) -> dict:
-            return await SignalMonitor.scan_signals(self, context)
+    @wf.task(execution_timeout="12m", retries=1)
+    async def scan_signals(input, ctx):
+        return await agent.scan_signals(ctx)
 
-    return _Registered
+    return wf

@@ -462,37 +462,37 @@ class Builder(BaseAgent):
         }
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register Builder as a Hatchet workflow."""
+    agent = Builder()
+    wf = hatchet_instance.workflow(name="builder")
 
-    @hatchet_instance.workflow(name="builder")
-    class _Registered(Builder):
-        @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def generate_architecture(self, context) -> dict:
-            return await Builder.generate_architecture(self, context)
+    @wf.task(execution_timeout="10m", retries=2)
+    async def generate_architecture(input, ctx):
+        return await agent.generate_architecture(ctx)
 
-        @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def generate_code(self, context) -> dict:
-            return await Builder.generate_code(self, context)
+    @wf.task(execution_timeout="10m", retries=2)
+    async def generate_code(input, ctx):
+        return await agent.generate_code(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def verify_rls(self, context) -> dict:
-            return await Builder.verify_rls(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def verify_rls(input, ctx):
+        return await agent.verify_rls(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def push_to_github(self, context) -> dict:
-            return await Builder.push_to_github(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def push_to_github(input, ctx):
+        return await agent.push_to_github(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def deploy_vercel(self, context) -> dict:
-            return await Builder.deploy_vercel(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def deploy_vercel(input, ctx):
+        return await agent.deploy_vercel(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def run_lighthouse(self, context) -> dict:
-            return await Builder.run_lighthouse(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def run_lighthouse(input, ctx):
+        return await agent.run_lighthouse(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def notify_agents(self, context) -> dict:
-            return await Builder.notify_agents(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def notify_agents(input, ctx):
+        return await agent.notify_agents(ctx)
 
-    return _Registered
+    return wf

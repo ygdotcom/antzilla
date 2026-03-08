@@ -255,12 +255,12 @@ class OutreachAgent(BaseAgent):
         }
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = OutreachAgent()
+    wf = hatchet_instance.workflow(name="outreach-agent", on_crons=["0 14 * * *"])
 
-    @hatchet_instance.workflow(name="outreach-agent", on_crons=["0 14 * * *"])
-    class _Registered(OutreachAgent):
-        @hatchet_instance.task(execution_timeout="25m", retries=1)
-        async def run_outreach(self, context) -> dict:
-            return await OutreachAgent.run_outreach(self, context)
+    @wf.task(execution_timeout="25m", retries=1)
+    async def run_outreach(input, ctx):
+        return await agent.run_outreach(ctx)
 
-    return _Registered
+    return wf

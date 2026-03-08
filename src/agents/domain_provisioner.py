@@ -515,57 +515,57 @@ class DomainProvisioner(BaseAgent):
         return {"saved": True, "business_id": business_id}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register DomainProvisioner as a Hatchet workflow."""
+    agent = DomainProvisioner()
+    wf = hatchet_instance.workflow(name="domain-provisioner")
 
-    @hatchet_instance.workflow(name="domain-provisioner")
-    class _Registered(DomainProvisioner):
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def buy_primary_domain(self, context) -> dict:
-            return await DomainProvisioner.buy_primary_domain(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def buy_primary_domain(input, ctx):
+        return await agent.buy_primary_domain(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def buy_cold_email_domains(self, context) -> dict:
-            return await DomainProvisioner.buy_cold_email_domains(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def buy_cold_email_domains(input, ctx):
+        return await agent.buy_cold_email_domains(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def setup_dns_all_domains(self, context) -> dict:
-            return await DomainProvisioner.setup_dns_all_domains(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def setup_dns_all_domains(input, ctx):
+        return await agent.setup_dns_all_domains(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def create_vercel_project(self, context) -> dict:
-            return await DomainProvisioner.create_vercel_project(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def create_vercel_project(input, ctx):
+        return await agent.create_vercel_project(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def create_github_repo(self, context) -> dict:
-            return await DomainProvisioner.create_github_repo(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def create_github_repo(input, ctx):
+        return await agent.create_github_repo(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def create_supabase_project(self, context) -> dict:
-            return await DomainProvisioner.create_supabase_project(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def create_supabase_project(input, ctx):
+        return await agent.create_supabase_project(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def setup_stripe(self, context) -> dict:
-            return await DomainProvisioner.setup_stripe(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def setup_stripe(input, ctx):
+        return await agent.setup_stripe(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def setup_resend(self, context) -> dict:
-            return await DomainProvisioner.setup_resend(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def setup_resend(input, ctx):
+        return await agent.setup_resend(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def setup_instantly(self, context) -> dict:
-            return await DomainProvisioner.setup_instantly(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def setup_instantly(input, ctx):
+        return await agent.setup_instantly(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def buy_twilio_number(self, context) -> dict:
-            return await DomainProvisioner.buy_twilio_number(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def buy_twilio_number(input, ctx):
+        return await agent.buy_twilio_number(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def create_retell_agents(self, context) -> dict:
-            return await DomainProvisioner.create_retell_agents(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def create_retell_agents(input, ctx):
+        return await agent.create_retell_agents(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def save_infra_to_db(self, context) -> dict:
-            return await DomainProvisioner.save_infra_to_db(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def save_infra_to_db(input, ctx):
+        return await agent.save_infra_to_db(ctx)
 
-    return _Registered
+    return wf

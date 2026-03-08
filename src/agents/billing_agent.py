@@ -290,18 +290,19 @@ class BillingAgent(BaseAgent):
         return {"pre_dunning_checked": True, "intervals": PRE_DUNNING_DAYS}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = BillingAgent()
 
-    @hatchet_instance.workflow(name="billing-agent")
-    class _Registered(BillingAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def handle_webhook(self, context) -> dict:
-            return await BillingAgent.handle_webhook(self, context)
+    wf_webhook = hatchet_instance.workflow(name="billing-agent")
 
-    @hatchet_instance.workflow(name="billing-pre-dunning", on_crons=["0 15 * * *"])
-    class _PreDunning(BillingAgent):
-        @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def pre_dunning_check(self, context) -> dict:
-            return await BillingAgent.pre_dunning_check(self, context)
+    @wf_webhook.task(execution_timeout="5m", retries=2)
+    async def handle_webhook(input, ctx):
+        return await agent.handle_webhook(ctx)
 
-    return _Registered, _PreDunning
+    wf_dunning = hatchet_instance.workflow(name="billing-pre-dunning", on_crons=["0 15 * * *"])
+
+    @wf_dunning.task(execution_timeout="8m", retries=1)
+    async def pre_dunning_check(input, ctx):
+        return await agent.pre_dunning_check(ctx)
+
+    return wf_webhook, wf_dunning

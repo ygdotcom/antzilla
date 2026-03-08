@@ -187,28 +187,28 @@ class FulfillmentAgent(BaseAgent):
         return {"updated": True, "status": status}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = FulfillmentAgent()
+    wf = hatchet_instance.workflow(name="fulfillment")
 
-    @hatchet_instance.workflow(name="fulfillment")
-    class _Registered(FulfillmentAgent):
-        @hatchet_instance.task(execution_timeout="2m", retries=2)
-        async def receive_job(self, context) -> dict:
-            return await FulfillmentAgent.receive_job(self, context)
+    @wf.task(execution_timeout="2m", retries=2)
+    async def receive_job(input, ctx):
+        return await agent.receive_job(ctx)
 
-        @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def process_job(self, context) -> dict:
-            return await FulfillmentAgent.process_job(self, context)
+    @wf.task(execution_timeout="8m", retries=1)
+    async def process_job(input, ctx):
+        return await agent.process_job(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def generate_deliverable(self, context) -> dict:
-            return await FulfillmentAgent.generate_deliverable(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def generate_deliverable(input, ctx):
+        return await agent.generate_deliverable(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def deliver_to_customer(self, context) -> dict:
-            return await FulfillmentAgent.deliver_to_customer(self, context)
+    @wf.task(execution_timeout="3m", retries=2)
+    async def deliver_to_customer(input, ctx):
+        return await agent.deliver_to_customer(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def update_status(self, context) -> dict:
-            return await FulfillmentAgent.update_status(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def update_status(input, ctx):
+        return await agent.update_status(ctx)
 
-    return _Registered
+    return wf

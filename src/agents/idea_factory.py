@@ -288,25 +288,25 @@ class IdeaFactory(BaseAgent):
         return {"saved": len(saved_ids), "saved_ids": saved_ids, "top_3": top_3_summary}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register IdeaFactory as a Hatchet workflow — weekly Monday 5 AM ET (10 UTC)."""
+    agent = IdeaFactory()
+    wf = hatchet_instance.workflow(name="idea-factory", on_crons=["0 10 * * 1"])
 
-    @hatchet_instance.workflow(name="idea-factory", on_crons=["0 10 * * 1"])
-    class _RegisteredIdeaFactory(IdeaFactory):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def scrape_sources(self, context) -> dict:
-            return await IdeaFactory.scrape_sources(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def scrape_sources(input, ctx):
+        return await agent.scrape_sources(ctx)
 
-        @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def filter_canadian_gap(self, context) -> dict:
-            return await IdeaFactory.filter_canadian_gap(self, context)
+    @wf.task(execution_timeout="10m", retries=2)
+    async def filter_canadian_gap(input, ctx):
+        return await agent.filter_canadian_gap(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def score_ideas(self, context) -> dict:
-            return await IdeaFactory.score_ideas(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def score_ideas(input, ctx):
+        return await agent.score_ideas(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def save_and_notify(self, context) -> dict:
-            return await IdeaFactory.save_and_notify(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def save_and_notify(input, ctx):
+        return await agent.save_and_notify(ctx)
 
-    return _RegisteredIdeaFactory
+    return wf

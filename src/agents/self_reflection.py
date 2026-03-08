@@ -263,29 +263,29 @@ class SelfReflectionAgent(BaseAgent):
         return {"report_sent": True, "findings_count": len(findings)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register SelfReflectionAgent as a Hatchet workflow."""
+    agent = SelfReflectionAgent()
+    wf = hatchet_instance.workflow(name="self-reflection", on_crons=["0 8 * * 0"])
 
-    @hatchet_instance.workflow(name="self-reflection", on_crons=["0 8 * * 0"])
-    class _RegisteredSelfReflectionAgent(SelfReflectionAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def gather_data(self, context) -> dict:
-            return await SelfReflectionAgent.gather_data(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def gather_data(input, ctx):
+        return await agent.gather_data(ctx)
 
-        @hatchet_instance.task(execution_timeout="15m", retries=2)
-        async def analyze(self, context) -> dict:
-            return await SelfReflectionAgent.analyze(self, context)
+    @wf.task(execution_timeout="15m", retries=2)
+    async def analyze(input, ctx):
+        return await agent.analyze(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def categorize_findings(self, context) -> dict:
-            return await SelfReflectionAgent.categorize_findings(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def categorize_findings(input, ctx):
+        return await agent.categorize_findings(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=2)
-        async def save_improvements(self, context) -> dict:
-            return await SelfReflectionAgent.save_improvements(self, context)
+    @wf.task(execution_timeout="2m", retries=2)
+    async def save_improvements(input, ctx):
+        return await agent.save_improvements(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def send_report(self, context) -> dict:
-            return await SelfReflectionAgent.send_report(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def send_report(input, ctx):
+        return await agent.send_report(ctx)
 
-    return _RegisteredSelfReflectionAgent
+    return wf

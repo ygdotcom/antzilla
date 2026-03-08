@@ -373,24 +373,24 @@ class VoiceAgent(BaseAgent):
         }
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = VoiceAgent()
+    wf = hatchet_instance.workflow(name="voice-agent")
 
-    @hatchet_instance.workflow(name="voice-agent")
-    class _Registered(VoiceAgent):
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def prepare_call(self, context) -> dict:
-            return await VoiceAgent.prepare_call(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def prepare_call(input, ctx):
+        return await agent.prepare_call(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def check_compliance(self, context) -> dict:
-            return await VoiceAgent.check_compliance(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def check_compliance(input, ctx):
+        return await agent.check_compliance(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def make_call(self, context) -> dict:
-            return await VoiceAgent.make_call(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def make_call(input, ctx):
+        return await agent.make_call(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def process_result(self, context) -> dict:
-            return await VoiceAgent.process_result(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def process_result(input, ctx):
+        return await agent.process_result(ctx)
 
-    return _Registered
+    return wf

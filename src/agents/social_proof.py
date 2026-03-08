@@ -342,32 +342,32 @@ class SocialProof(BaseAgent):
         return {"updated": len(businesses)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = SocialProof()
+    wf = hatchet_instance.workflow(name="social-proof")
 
-    @hatchet_instance.workflow(name="social-proof")
-    class _Registered(SocialProof):
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def find_candidates(self, context) -> dict:
-            return await SocialProof.find_candidates(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def find_candidates(input, ctx):
+        return await agent.find_candidates(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def send_testimonial_request(self, context) -> dict:
-            return await SocialProof.send_testimonial_request(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def send_testimonial_request(input, ctx):
+        return await agent.send_testimonial_request(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def collect_response(self, context) -> dict:
-            return await SocialProof.collect_response(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def collect_response(input, ctx):
+        return await agent.collect_response(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def publish_to_site(self, context) -> dict:
-            return await SocialProof.publish_to_site(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def publish_to_site(input, ctx):
+        return await agent.publish_to_site(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def request_external_review(self, context) -> dict:
-            return await SocialProof.request_external_review(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def request_external_review(input, ctx):
+        return await agent.request_external_review(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def update_aggregate_metrics(self, context) -> dict:
-            return await SocialProof.update_aggregate_metrics(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def update_aggregate_metrics(input, ctx):
+        return await agent.update_aggregate_metrics(ctx)
 
-    return _Registered
+    return wf

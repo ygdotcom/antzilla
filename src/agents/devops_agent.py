@@ -144,23 +144,24 @@ class DevOpsAgent(BaseAgent):
             return {"restore_test": "failed", "error": str(exc)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register DevOpsAgent as two Hatchet workflows: health (5-min) and backup (daily)."""
+    agent = DevOpsAgent()
 
-    @hatchet_instance.workflow(name="devops-health", on_crons=["*/5 * * * *"])
-    class _DevOpsHealth(DevOpsAgent):
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def health_check(self, context) -> dict:
-            return await DevOpsAgent.health_check(self, context)
+    wf_health = hatchet_instance.workflow(name="devops-health", on_crons=["*/5 * * * *"])
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def alert_if_down(self, context) -> dict:
-            return await DevOpsAgent.alert_if_down(self, context)
+    @wf_health.task(execution_timeout="2m", retries=1)
+    async def health_check(input, ctx):
+        return await agent.health_check(ctx)
 
-    @hatchet_instance.workflow(name="devops-backup", on_crons=["0 7 * * *"])
-    class _DevOpsBackup(DevOpsAgent):
-        @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def backup_db(self, context) -> dict:
-            return await DevOpsAgent.backup_db(self, context)
+    @wf_health.task(execution_timeout="1m", retries=1)
+    async def alert_if_down(input, ctx):
+        return await agent.alert_if_down(ctx)
 
-    return _DevOpsHealth, _DevOpsBackup
+    wf_backup = hatchet_instance.workflow(name="devops-backup", on_crons=["0 7 * * *"])
+
+    @wf_backup.task(execution_timeout="10m", retries=2)
+    async def backup_db(input, ctx):
+        return await agent.backup_db(ctx)
+
+    return wf_health, wf_backup

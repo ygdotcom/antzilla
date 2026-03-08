@@ -191,31 +191,28 @@ class I18nAgent(BaseAgent):
         return {"reported": len(issues)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = I18nAgent()
+    wf = hatchet_instance.workflow(name="i18n-agent", on_crons=["0 10 * * 0"])
 
-    @hatchet_instance.workflow(
-        name="i18n-agent",
-        on_crons=["0 10 * * 0"],
-    )
-    class _Registered(I18nAgent):
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def pull_messages(self, context) -> dict:
-            return await I18nAgent.pull_messages(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def pull_messages(input, ctx):
+        return await agent.pull_messages(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def validate_completeness(self, context) -> dict:
-            return await I18nAgent.validate_completeness(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def validate_completeness(input, ctx):
+        return await agent.validate_completeness(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def quality_check(self, context) -> dict:
-            return await I18nAgent.quality_check(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def quality_check(input, ctx):
+        return await agent.quality_check(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def update_glossary(self, context) -> dict:
-            return await I18nAgent.update_glossary(self, context)
+    @wf.task(execution_timeout="3m", retries=1)
+    async def update_glossary(input, ctx):
+        return await agent.update_glossary(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def report_issues(self, context) -> dict:
-            return await I18nAgent.report_issues(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def report_issues(input, ctx):
+        return await agent.report_issues(ctx)
 
-    return _Registered
+    return wf

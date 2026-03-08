@@ -349,27 +349,21 @@ class MetaOrchestrator(BaseAgent):
         }
 
 
-def register(hatchet_instance) -> type:
-    """Register the MetaOrchestrator as a Hatchet workflow.
+def register(hatchet_instance):
+    """Register the MetaOrchestrator as a Hatchet workflow."""
+    agent = MetaOrchestrator()
+    wf = hatchet_instance.workflow(name="meta-orchestrator", on_crons=["0 11 * * *"])
 
-    Called from main.py at startup — keeps this module importable without
-    a live Hatchet token (critical for tests).
-    """
+    @wf.task(execution_timeout="5m", retries=2)
+    async def gather_all_metrics(input, ctx):
+        return await agent.gather_all_metrics(ctx)
 
-    @hatchet_instance.workflow(name="meta-orchestrator", on_crons=["0 11 * * *"])
-    class _RegisteredMetaOrchestrator(MetaOrchestrator):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def gather_all_metrics(self, context) -> dict:
-            return await MetaOrchestrator.gather_all_metrics(self, context)
+    @wf.task(execution_timeout="5m", retries=2)
+    async def analyze_and_decide(input, ctx):
+        return await agent.analyze_and_decide(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def analyze_and_decide(self, context) -> dict:
-            return await MetaOrchestrator.analyze_and_decide(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def execute_decisions(input, ctx):
+        return await agent.execute_decisions(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def execute_decisions(self, context) -> dict:
-            return await MetaOrchestrator.execute_decisions(
-                self, context, _hatchet_admin=hatchet_instance.client.admin
-            )
-
-    return _RegisteredMetaOrchestrator
+    return wf

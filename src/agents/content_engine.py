@@ -423,20 +423,20 @@ class ContentEngine(BaseAgent):
         return {"llms_txt_updated": updated}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = ContentEngine()
+    wf = hatchet_instance.workflow(name="content-engine", on_crons=["0 12 * * 1,4"])
 
-    @hatchet_instance.workflow(name="content-engine", on_crons=["0 12 * * 1,4"])
-    class _Registered(ContentEngine):
-        @hatchet_instance.task(execution_timeout="20m", retries=1)
-        async def editorial_content(self, context) -> dict:
-            return await ContentEngine.editorial_content(self, context)
+    @wf.task(execution_timeout="20m", retries=1)
+    async def editorial_content(input, ctx):
+        return await agent.editorial_content(ctx)
 
-        @hatchet_instance.task(execution_timeout="20m", retries=1)
-        async def programmatic_seo(self, context) -> dict:
-            return await ContentEngine.programmatic_seo(self, context)
+    @wf.task(execution_timeout="20m", retries=1)
+    async def programmatic_seo(input, ctx):
+        return await agent.programmatic_seo(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def regenerate_llms_txt(self, context) -> dict:
-            return await ContentEngine.regenerate_llms_txt(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def regenerate_llms_txt(input, ctx):
+        return await agent.regenerate_llms_txt(ctx)
 
-    return _Registered
+    return wf

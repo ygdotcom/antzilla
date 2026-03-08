@@ -273,12 +273,12 @@ class ReplyHandler(BaseAgent):
         return {"processed": processed, "classifications": classifications}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = ReplyHandler()
+    wf = hatchet_instance.workflow(name="reply-handler", on_crons=["*/30 * * * *"])
 
-    @hatchet_instance.workflow(name="reply-handler", on_crons=["*/30 * * * *"])
-    class _Registered(ReplyHandler):
-        @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def process_replies(self, context) -> dict:
-            return await ReplyHandler.process_replies(self, context)
+    @wf.task(execution_timeout="8m", retries=1)
+    async def process_replies(input, ctx):
+        return await agent.process_replies(ctx)
 
-    return _Registered
+    return wf

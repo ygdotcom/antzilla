@@ -260,12 +260,12 @@ class LeadPipeline(BaseAgent):
         return {"businesses_processed": len(results), "total_leads": total, "details": results}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = LeadPipeline()
+    wf = hatchet_instance.workflow(name="lead-pipeline", on_crons=["0 11 * * *"])
 
-    @hatchet_instance.workflow(name="lead-pipeline", on_crons=["0 11 * * *"])
-    class _Registered(LeadPipeline):
-        @hatchet_instance.task(execution_timeout="25m", retries=1)
-        async def generate_leads(self, context) -> dict:
-            return await LeadPipeline.generate_leads(self, context)
+    @wf.task(execution_timeout="25m", retries=1)
+    async def generate_leads(input, ctx):
+        return await agent.generate_leads(ctx)
 
-    return _Registered
+    return wf

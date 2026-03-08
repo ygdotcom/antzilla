@@ -186,29 +186,29 @@ class GrowthHackerAgent(BaseAgent):
         return {"tracking": "30_day_window"}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register GrowthHackerAgent as a Hatchet workflow."""
+    agent = GrowthHackerAgent()
+    wf = hatchet_instance.workflow(name="growth-hacker", on_crons=["0 11 * * 2"])
 
-    @hatchet_instance.workflow(name="growth-hacker", on_crons=["0 11 * * 2"])
-    class _RegisteredGrowthHacker(GrowthHackerAgent):
-        @hatchet_instance.task(execution_timeout="15m", retries=2)
-        async def research_opportunities(self, context) -> dict:
-            return await GrowthHackerAgent.research_opportunities(self, context)
+    @wf.task(execution_timeout="15m", retries=2)
+    async def research_opportunities(input, ctx):
+        return await agent.research_opportunities(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def score_and_prioritize(self, context) -> dict:
-            return await GrowthHackerAgent.score_and_prioritize(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def score_and_prioritize(input, ctx):
+        return await agent.score_and_prioritize(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def auto_execute_easy(self, context) -> dict:
-            return await GrowthHackerAgent.auto_execute_easy(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def auto_execute_easy(input, ctx):
+        return await agent.auto_execute_easy(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def propose_complex(self, context) -> dict:
-            return await GrowthHackerAgent.propose_complex(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def propose_complex(input, ctx):
+        return await agent.propose_complex(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def track_and_learn(self, context) -> dict:
-            return await GrowthHackerAgent.track_and_learn(self, context)
+    @wf.task(execution_timeout="1m", retries=1)
+    async def track_and_learn(input, ctx):
+        return await agent.track_and_learn(ctx)
 
-    return _RegisteredGrowthHacker
+    return wf

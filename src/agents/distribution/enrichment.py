@@ -278,12 +278,12 @@ class EnrichmentAgent(BaseAgent):
         return {"enriched": enriched_count, "verified": verified_count}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = EnrichmentAgent()
+    wf = hatchet_instance.workflow(name="enrichment-agent")
 
-    @hatchet_instance.workflow(name="enrichment-agent")
-    class _Registered(EnrichmentAgent):
-        @hatchet_instance.task(execution_timeout="25m", retries=1)
-        async def enrich_leads(self, context) -> dict:
-            return await EnrichmentAgent.enrich_leads(self, context)
+    @wf.task(execution_timeout="25m", retries=1)
+    async def enrich_leads(input, ctx):
+        return await agent.enrich_leads(ctx)
 
-    return _Registered
+    return wf

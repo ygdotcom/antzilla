@@ -333,20 +333,20 @@ class SocialAgent(BaseAgent):
         return {"businesses_checked": len(businesses), "alerts": alerts}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = SocialAgent()
+    wf = hatchet_instance.workflow(name="social-agent", on_crons=["0 13,17,21 * * *"])
 
-    @hatchet_instance.workflow(name="social-agent", on_crons=["0 13,17,21 * * *"])
-    class _Registered(SocialAgent):
-        @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def monitor_and_engage(self, context) -> dict:
-            return await SocialAgent.monitor_and_engage(self, context)
+    @wf.task(execution_timeout="10m", retries=1)
+    async def monitor_and_engage(input, ctx):
+        return await agent.monitor_and_engage(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def linkedin_posts(self, context) -> dict:
-            return await SocialAgent.linkedin_posts(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def linkedin_posts(input, ctx):
+        return await agent.linkedin_posts(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def monitor_brand_mentions(self, context) -> dict:
-            return await SocialAgent.monitor_brand_mentions(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def monitor_brand_mentions(input, ctx):
+        return await agent.monitor_brand_mentions(ctx)
 
-    return _Registered
+    return wf

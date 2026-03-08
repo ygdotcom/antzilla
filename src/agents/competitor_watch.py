@@ -205,32 +205,32 @@ class CompetitorWatchAgent(BaseAgent):
         return {"logged": True}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = CompetitorWatchAgent()
+    wf = hatchet_instance.workflow(name="competitor-watch", on_crons=["0 9 * * 3"])
 
-    @hatchet_instance.workflow(name="competitor-watch", on_crons=["0 9 * * 3"])
-    class _Registered(CompetitorWatchAgent):
-        @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def scrape_competitors(self, context) -> dict:
-            return await CompetitorWatchAgent.scrape_competitors(self, context)
+    @wf.task(execution_timeout="10m", retries=1)
+    async def scrape_competitors(input, ctx):
+        return await agent.scrape_competitors(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def check_pricing_changes(self, context) -> dict:
-            return await CompetitorWatchAgent.check_pricing_changes(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def check_pricing_changes(input, ctx):
+        return await agent.check_pricing_changes(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def check_product_hunt(self, context) -> dict:
-            return await CompetitorWatchAgent.check_product_hunt(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def check_product_hunt(input, ctx):
+        return await agent.check_product_hunt(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def analyze_with_claude(self, context) -> dict:
-            return await CompetitorWatchAgent.analyze_with_claude(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def analyze_with_claude(input, ctx):
+        return await agent.analyze_with_claude(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def alert_if_critical(self, context) -> dict:
-            return await CompetitorWatchAgent.alert_if_critical(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def alert_if_critical(input, ctx):
+        return await agent.alert_if_critical(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def log_report(self, context) -> dict:
-            return await CompetitorWatchAgent.log_report(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def log_report(input, ctx):
+        return await agent.log_report(ctx)
 
-    return _Registered
+    return wf

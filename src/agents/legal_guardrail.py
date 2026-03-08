@@ -230,43 +230,44 @@ class LegalGuardrailAgent(BaseAgent):
         return {"issues": all_issues, "critical_count": len(critical), "high_count": len(high)}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register LegalGuardrailAgent as two Hatchet workflows: event + weekly cron."""
+    agent = LegalGuardrailAgent()
 
-    @hatchet_instance.workflow(name="legal-guardrail")
-    class _LegalEvent(LegalGuardrailAgent):
-        @hatchet_instance.task(execution_timeout="2m", retries=2)
-        async def scan_business(self, context) -> dict:
-            return await LegalGuardrailAgent.scan_business(self, context)
+    wf_event = hatchet_instance.workflow(name="legal-guardrail")
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def check_content(self, context) -> dict:
-            return await LegalGuardrailAgent.check_content(self, context)
+    @wf_event.task(execution_timeout="2m", retries=2)
+    async def scan_business(input, ctx):
+        return await agent.scan_business(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def check_voice_compliance(self, context) -> dict:
-            return await LegalGuardrailAgent.check_voice_compliance(self, context)
+    @wf_event.task(execution_timeout="5m", retries=2)
+    async def check_content(input, ctx):
+        return await agent.check_content(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def report_issues(self, context) -> dict:
-            return await LegalGuardrailAgent.report_issues(self, context)
+    @wf_event.task(execution_timeout="2m", retries=1)
+    async def check_voice_compliance(input, ctx):
+        return await agent.check_voice_compliance(ctx)
 
-    @hatchet_instance.workflow(name="legal-weekly-scan", on_crons=["0 5 * * 1"])
-    class _LegalWeekly(LegalGuardrailAgent):
-        @hatchet_instance.task(execution_timeout="2m", retries=2)
-        async def scan_business(self, context) -> dict:
-            return await LegalGuardrailAgent.scan_business(self, context)
+    @wf_event.task(execution_timeout="1m", retries=1)
+    async def report_issues(input, ctx):
+        return await agent.report_issues(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def check_content(self, context) -> dict:
-            return await LegalGuardrailAgent.check_content(self, context)
+    wf_weekly = hatchet_instance.workflow(name="legal-weekly-scan", on_crons=["0 5 * * 1"])
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def check_voice_compliance(self, context) -> dict:
-            return await LegalGuardrailAgent.check_voice_compliance(self, context)
+    @wf_weekly.task(execution_timeout="2m", retries=2)
+    async def weekly_scan_business(input, ctx):
+        return await agent.scan_business(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def report_issues(self, context) -> dict:
-            return await LegalGuardrailAgent.report_issues(self, context)
+    @wf_weekly.task(execution_timeout="5m", retries=2)
+    async def weekly_check_content(input, ctx):
+        return await agent.check_content(ctx)
 
-    return _LegalEvent, _LegalWeekly
+    @wf_weekly.task(execution_timeout="2m", retries=1)
+    async def weekly_check_voice_compliance(input, ctx):
+        return await agent.check_voice_compliance(ctx)
+
+    @wf_weekly.task(execution_timeout="1m", retries=1)
+    async def weekly_report_issues(input, ctx):
+        return await agent.report_issues(ctx)
+
+    return wf_event, wf_weekly

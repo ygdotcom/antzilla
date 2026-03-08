@@ -251,36 +251,36 @@ class Validator(BaseAgent):
         return {"reported": True, "decision": decision}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = Validator()
+    wf = hatchet_instance.workflow(name="validator")
 
-    @hatchet_instance.workflow(name="validator")
-    class _Registered(Validator):
-        @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def request_light_brand(self, context) -> dict:
-            return await Validator.request_light_brand(self, context)
+    @wf.task(execution_timeout="10m", retries=1)
+    async def request_light_brand(input, ctx):
+        return await agent.request_light_brand(ctx)
 
-        @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def generate_landing_page(self, context) -> dict:
-            return await Validator.generate_landing_page(self, context)
+    @wf.task(execution_timeout="10m", retries=1)
+    async def generate_landing_page(input, ctx):
+        return await agent.generate_landing_page(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def deploy_landing(self, context) -> dict:
-            return await Validator.deploy_landing(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def deploy_landing(input, ctx):
+        return await agent.deploy_landing(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def launch_ads(self, context) -> dict:
-            return await Validator.launch_ads(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def launch_ads(input, ctx):
+        return await agent.launch_ads(ctx)
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def monitor_daily(self, context) -> dict:
-            return await Validator.monitor_daily(self, context)
+    @wf.task(execution_timeout="5m", retries=1)
+    async def monitor_daily(input, ctx):
+        return await agent.monitor_daily(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def evaluate_results(self, context) -> dict:
-            return await Validator.evaluate_results(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def evaluate_results(input, ctx):
+        return await agent.evaluate_results(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def report_to_meta(self, context) -> dict:
-            return await Validator.report_to_meta(self, context)
+    @wf.task(execution_timeout="2m", retries=1)
+    async def report_to_meta(input, ctx):
+        return await agent.report_to_meta(ctx)
 
-    return _Registered
+    return wf

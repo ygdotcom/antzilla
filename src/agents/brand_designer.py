@@ -271,31 +271,32 @@ class BrandDesigner(BaseAgent):
         return {"saved": True, "brand_kit": kit, "mode": "full"}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
     """Register BrandDesigner with two workflow variants: light and full."""
+    agent = BrandDesigner()
 
-    @hatchet_instance.workflow(name="brand-designer-light")
-    class _LightBrand(BrandDesigner):
-        @hatchet_instance.task(execution_timeout="8m", retries=2)
-        async def quick_brand(self, context) -> dict:
-            return await BrandDesigner.quick_brand(self, context)
+    wf_light = hatchet_instance.workflow(name="brand-designer-light")
 
-    @hatchet_instance.workflow(name="brand-designer-full")
-    class _FullBrand(BrandDesigner):
-        @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def research_inspiration(self, context) -> dict:
-            return await BrandDesigner.research_inspiration(self, context)
+    @wf_light.task(execution_timeout="8m", retries=2)
+    async def quick_brand(input, ctx):
+        return await agent.quick_brand(ctx)
 
-        @hatchet_instance.task(execution_timeout="8m", retries=2)
-        async def generate_brand_kit(self, context) -> dict:
-            return await BrandDesigner.generate_brand_kit(self, context)
+    wf_full = hatchet_instance.workflow(name="brand-designer-full")
 
-        @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def check_domains(self, context) -> dict:
-            return await BrandDesigner.check_domains(self, context)
+    @wf_full.task(execution_timeout="5m", retries=2)
+    async def research_inspiration(input, ctx):
+        return await agent.research_inspiration(ctx)
 
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def save_brand_kit(self, context) -> dict:
-            return await BrandDesigner.save_brand_kit(self, context)
+    @wf_full.task(execution_timeout="8m", retries=2)
+    async def generate_brand_kit(input, ctx):
+        return await agent.generate_brand_kit(ctx)
 
-    return _LightBrand, _FullBrand
+    @wf_full.task(execution_timeout="3m", retries=2)
+    async def check_domains(input, ctx):
+        return await agent.check_domains(ctx)
+
+    @wf_full.task(execution_timeout="3m", retries=1)
+    async def save_brand_kit(input, ctx):
+        return await agent.save_brand_kit(ctx)
+
+    return wf_light, wf_full

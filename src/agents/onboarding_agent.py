@@ -244,30 +244,32 @@ class OnboardingStallCheckAgent(OnboardingAgent):
         return {"stalled": len(stalled), "nudged": nudged}
 
 
-def register(hatchet_instance) -> type:
+def register(hatchet_instance):
+    agent = OnboardingAgent()
+    stall_agent = OnboardingStallCheckAgent()
 
-    @hatchet_instance.workflow(name="onboarding-agent")
-    class _Registered(OnboardingAgent):
-        @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def check_new_signups(self, context) -> dict:
-            return await OnboardingAgent.check_new_signups(self, context)
+    wf_main = hatchet_instance.workflow(name="onboarding-agent")
 
-        @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def send_nudge(self, context) -> dict:
-            return await OnboardingAgent.send_nudge(self, context)
+    @wf_main.task(execution_timeout="3m", retries=1)
+    async def check_new_signups(input, ctx):
+        return await agent.check_new_signups(ctx)
 
-        @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def check_aha_moment(self, context) -> dict:
-            return await OnboardingAgent.check_aha_moment(self, context)
+    @wf_main.task(execution_timeout="5m", retries=1)
+    async def send_nudge(input, ctx):
+        return await agent.send_nudge(ctx)
 
-        @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def track_progress(self, context) -> dict:
-            return await OnboardingAgent.track_progress(self, context)
+    @wf_main.task(execution_timeout="2m", retries=1)
+    async def check_aha_moment(input, ctx):
+        return await agent.check_aha_moment(ctx)
 
-    @hatchet_instance.workflow(name="onboarding-stall-check", on_crons=["0 14 * * *"])
-    class _StallCheck(OnboardingStallCheckAgent):
-        @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def check_stalled(self, context) -> dict:
-            return await OnboardingStallCheckAgent.check_stalled(self, context)
+    @wf_main.task(execution_timeout="1m", retries=1)
+    async def track_progress(input, ctx):
+        return await agent.track_progress(ctx)
 
-    return _Registered, _StallCheck
+    wf_stall = hatchet_instance.workflow(name="onboarding-stall-check", on_crons=["0 14 * * *"])
+
+    @wf_stall.task(execution_timeout="10m", retries=1)
+    async def check_stalled(input, ctx):
+        return await stall_agent.check_stalled(ctx)
+
+    return wf_main, wf_stall
