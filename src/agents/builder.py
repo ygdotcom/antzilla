@@ -817,12 +817,28 @@ class Builder(BaseAgent):
                             ), {"domain": deploy_url, "id": business_id})
                             await db.commit()
 
+                    # Track Vercel usage/cost
+                    vercel_cost = 0.0
+                    try:
+                        usage_resp = await client.get(
+                            "https://api.vercel.com/v2/usage",
+                            headers={"Authorization": f"Bearer {token}"},
+                        )
+                        if usage_resp.status_code == 200:
+                            usage = usage_resp.json()
+                            # Vercel Pro = $20/mo base. Per-project cost estimate.
+                            project_count = max(usage.get("projectCount", 1), 1)
+                            vercel_cost = round(20.0 / project_count / 30, 4)  # daily amortized per project
+                    except Exception:
+                        pass
+
                     await self.log_execution(
                         action="deploy_vercel",
                         result={"url": deploy_url, "id": deploy_id},
+                        cost_usd=vercel_cost,
                         business_id=business_id,
                     )
-                    return {"deployment_url": deploy_url, "deployment_id": deploy_id, "success": True}
+                    return {"deployment_url": deploy_url, "deployment_id": deploy_id, "success": True, "cost_usd": vercel_cost}
                 else:
                     logger.error("vercel_deploy_failed", status=deploy_resp.status_code, body=deploy_resp.text[:300])
                     return {"deployment_url": None, "success": False, "error": f"Vercel deploy: {deploy_resp.status_code}"}

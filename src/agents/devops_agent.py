@@ -106,6 +106,54 @@ class DevOpsAgent(BaseAgent):
 
         return {"results": results, "down": down}
 
+    async def track_infra_costs(self, context) -> dict:
+        """Track Vercel + GitHub usage costs and log to budget_tracking."""
+        costs = {}
+
+        # Vercel Pro = $20/mo
+        vercel_token = settings.get("VERCEL_TOKEN")
+        if vercel_token:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    # Get usage data
+                    resp = await client.get(
+                        "https://api.vercel.com/v2/usage",
+                        headers={"Authorization": f"Bearer {vercel_token}"},
+                    )
+                    if resp.status_code == 200:
+                        usage = resp.json()
+                        costs["vercel"] = {
+                            "monthly_base": 20.0,
+                            "daily_amortized": round(20.0 / 30, 2),
+                            "bandwidth_gb": usage.get("bandwidth", {}).get("gb", 0),
+                            "builds": usage.get("builds", {}).get("count", 0),
+                        }
+            except Exception as exc:
+                logger.warning("vercel_usage_fetch_failed", error=str(exc))
+
+        # Log to budget_tracking
+        if costs:
+            try:
+                from datetime import date
+                async with SessionLocal() as db:
+                    for provider, data in costs.items():
+                        daily_cost = data.get("daily_amortized", 0)
+                        if daily_cost > 0:
+                            await db.execute(text(
+                                "INSERT INTO budget_tracking (date, agent_name, api_provider, cost_usd) "
+                                "VALUES (CURRENT_DATE, 'infra', :provider, :cost) "
+                                "ON CONFLICT DO NOTHING"
+                            ), {"provider": provider, "cost": daily_cost})
+                    await db.commit()
+            except Exception as exc:
+                logger.warning("infra_cost_log_failed", error=str(exc))
+
+        await self.log_execution(
+            action="track_infra_costs",
+            result=costs,
+        )
+        return costs
+
     async def backup_db(self, context) -> dict:
         """pg_dump, compress, track in agent_logs."""
         db_url = settings.sync_database_url
@@ -172,5 +220,9 @@ def register(hatchet_instance):
     @wf_backup.task(execution_timeout="10m", retries=2)
     async def backup_db(input, ctx):
         return await agent.backup_db(ctx)
+
+    @wf_backup.task(execution_timeout="3m", retries=1)
+    async def track_infra_costs(input, ctx):
+        return await agent.track_infra_costs(ctx)
 
     return wf_health, wf_backup
