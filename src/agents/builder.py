@@ -226,22 +226,46 @@ def inject_rls_for_missing_tables(sql_content: str, missing_tables: list[str]) -
 
 
 def _parse_json_response(text: str) -> dict | None:
-    """Parse JSON from Claude response, handling code fences."""
+    """Parse JSON from Claude response, handling code fences and truncation."""
     clean = text.strip()
     if clean.startswith("```"):
         lines = clean.split("\n")
         lines = [l for l in lines if not l.strip().startswith("```")]
         clean = "\n".join(lines)
+
+    # Try direct parse
     try:
         return json.loads(clean)
     except json.JSONDecodeError:
-        start = clean.find("{")
-        end = clean.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                return json.loads(clean[start : end + 1])
-            except json.JSONDecodeError:
-                pass
+        pass
+
+    # Try extracting JSON block
+    start = clean.find("{")
+    end = clean.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            return json.loads(clean[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # If JSON is truncated (hit token limit), try to repair it
+    if start >= 0:
+        fragment = clean[start:]
+        # Close all open strings, arrays, objects
+        open_braces = fragment.count("{") - fragment.count("}")
+        open_brackets = fragment.count("[") - fragment.count("]")
+        # Check if we're inside a string (odd number of unescaped quotes)
+        in_string = fragment.count('"') % 2 == 1
+        repair = fragment
+        if in_string:
+            repair += '"'
+        repair += "]" * max(0, open_brackets)
+        repair += "}" * max(0, open_braces)
+        try:
+            return json.loads(repair)
+        except json.JSONDecodeError:
+            pass
+
     return None
 
 
@@ -310,12 +334,11 @@ class Builder(BaseAgent):
             "niche": niche,
         }, default=str)[:30_000]
 
-        # Code gen needs lots of tokens — files contain full source code
         response, cost = await call_claude(
             model_tier=model_tier,
             system=CODE_GEN_PROMPT,
             user=user_payload,
-            max_tokens=16384,
+            max_tokens=32768,
             temperature=0.2,
         )
 
