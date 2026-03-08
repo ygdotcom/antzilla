@@ -321,15 +321,15 @@ class TestVerifyRLS:
         assert "ENABLE ROW LEVEL SECURITY" in fixed_sql
 
 
-class TestNotifyAgents:
+class TestFinalize:
     @pytest.mark.asyncio
     async def test_updates_business_status(self, agent):
         ctx = MagicMock()
         ctx.workflow_input = MagicMock(return_value={"business_id": 1})
         ctx.step_output = MagicMock(
             side_effect=lambda name: {
-                "deploy_vercel": {"deployment_url": "test.vercel.app"},
-                "run_lighthouse": {"lighthouse_scores": {"performance": 90}},
+                "create_github_repo": {"repo": "ygdotcom/test-biz"},
+                "push_to_github": {"pushed_files": [{"path": "src/app.tsx", "status": 201}]},
             }[name]
         )
 
@@ -343,11 +343,11 @@ class TestNotifyAgents:
             patch("src.agents.builder.SessionLocal", return_value=mock_db),
             patch.object(agent, "log_execution", new_callable=AsyncMock),
         ):
-            result = await agent.notify_agents(ctx)
+            result = await agent.finalize(ctx)
 
-        assert result["status"] == "pre_launch"
-        assert result["deployment_url"] == "test.vercel.app"
-        mock_db.execute.assert_called_once()
+        assert result["status"] == "building"
+        assert result["github_repo"] == "ygdotcom/test-biz"
+        assert result["files_pushed"] == 1
 
 
 class TestArchitecturePrompt:

@@ -6,6 +6,7 @@ First boot: /login → /setup wizard if no secrets configured.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import structlog
@@ -15,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.config import settings
+from src.db import SessionLocal
 from src.dashboard.deps import (
     SESSION_COOKIE,
     _sign_token,
@@ -103,7 +105,147 @@ AGENT_RUNNERS = {
     "self-reflection": ("src.agents.self_reflection", "SelfReflectionAgent", [
         "gather_data", "analyze", "categorize_findings", "save_improvements", "send_report"
     ]),
+    "brand-designer": ("src.agents.brand_designer", "BrandDesigner", [
+        "quick_brand"
+    ]),
+    "builder": ("src.agents.builder", "Builder", [
+        "generate_architecture", "generate_code", "verify_rls",
+        "create_github_repo", "push_to_github", "finalize"
+    ]),
 }
+
+
+async def run_build_pipeline(business_id: int):
+    """Full build pipeline: Brand Designer → Builder. Runs in background."""
+    import importlib
+    from sqlalchemy import text as sa_text
+
+    async def _pipeline():
+        try:
+            # Fetch business data
+            async with SessionLocal() as db:
+                biz = (await db.execute(sa_text(
+                    "SELECT id, name, slug, niche, idea_id FROM businesses WHERE id = :id"
+                ), {"id": business_id})).fetchone()
+                if not biz:
+                    logger.error("build_pipeline_no_business", business_id=business_id)
+                    return
+
+                # Fetch idea's scout report if available
+                scout_report = ""
+                if biz.idea_id:
+                    idea = (await db.execute(sa_text(
+                        "SELECT scout_report, ca_gap_analysis FROM ideas WHERE id = :id"
+                    ), {"id": biz.idea_id})).fetchone()
+                    if idea:
+                        scout_report = idea.scout_report or idea.ca_gap_analysis or ""
+
+                await db.execute(sa_text(
+                    "UPDATE businesses SET status = 'building', updated_at = NOW() WHERE id = :id"
+                ), {"id": business_id})
+                await db.execute(sa_text(
+                    "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                    "VALUES ('build_pipeline', 'pipeline_started', :result, 'success', :biz_id)"
+                ), {"result": json.dumps({"business": biz.name}), "biz_id": business_id})
+                await db.commit()
+
+            # --- STEP 1: Brand Designer (light mode) ---
+            logger.info("build_pipeline_step", step="brand_designer", business=biz.name)
+
+            class BrandContext:
+                def __init__(self, biz_id, niche, scout):
+                    self._input = {"business_id": biz_id, "niche": niche, "scout_report": scout}
+                    self._outputs = {}
+                def workflow_input(self):
+                    return self._input
+                def step_output(self, name):
+                    return self._outputs.get(name, {})
+
+            from src.agents.brand_designer import BrandDesigner
+            designer = BrandDesigner()
+            brand_ctx = BrandContext(business_id, biz.niche or "", scout_report)
+            brand_result = await designer.quick_brand(brand_ctx)
+            brand_kit = brand_result.get("brand_kit", {})
+
+            async with SessionLocal() as db:
+                await db.execute(sa_text(
+                    "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                    "VALUES ('brand_designer', 'quick_brand_done', :result, 'success', :biz_id)"
+                ), {
+                    "result": json.dumps({
+                        "recommended_name": brand_kit.get("recommended_name", ""),
+                        "has_colors": bool(brand_kit.get("colors")),
+                    }),
+                    "biz_id": business_id,
+                })
+                await db.commit()
+
+            # --- STEP 2: Builder ---
+            logger.info("build_pipeline_step", step="builder", business=biz.name)
+
+            class BuilderContext:
+                def __init__(self, biz_id, niche, scout, brand, github=""):
+                    self._input = {
+                        "business_id": biz_id, "niche": niche,
+                        "scout_report": scout, "brand_kit": brand,
+                        "github_repo": github,
+                    }
+                    self._outputs = {}
+                def workflow_input(self):
+                    return self._input
+                def step_output(self, name):
+                    return self._outputs.get(name, {})
+
+            from src.agents.builder import Builder
+            builder = Builder()
+            build_ctx = BuilderContext(business_id, biz.niche or "", scout_report, brand_kit)
+
+            steps = [
+                ("generate_architecture", builder.generate_architecture),
+                ("generate_code", builder.generate_code),
+                ("verify_rls", builder.verify_rls),
+                ("create_github_repo", builder.create_github_repo),
+                ("push_to_github", builder.push_to_github),
+                ("finalize", builder.finalize),
+            ]
+            for step_name, step_fn in steps:
+                logger.info("builder_step", step=step_name, business=biz.name)
+                result = await step_fn(build_ctx)
+                build_ctx._outputs[step_name] = result if isinstance(result, dict) else {}
+
+            finalize_result = build_ctx._outputs.get("finalize", {})
+
+            async with SessionLocal() as db:
+                await db.execute(sa_text(
+                    "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                    "VALUES ('build_pipeline', 'pipeline_complete', :result, 'success', :biz_id)"
+                ), {
+                    "result": json.dumps({
+                        "github_repo": finalize_result.get("github_repo", ""),
+                        "files_pushed": finalize_result.get("files_pushed", 0),
+                    }),
+                    "biz_id": business_id,
+                })
+                await db.commit()
+
+            logger.info("build_pipeline_complete", business=biz.name,
+                        repo=finalize_result.get("github_repo"))
+
+        except Exception as exc:
+            logger.error("build_pipeline_failed", business_id=business_id,
+                         error=str(exc), error_type=type(exc).__name__)
+            try:
+                async with SessionLocal() as db:
+                    await db.execute(sa_text(
+                        "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                        "VALUES ('build_pipeline', 'pipeline_failed', :result, 'error', :biz_id)"
+                    ), {"result": json.dumps({"error": str(exc)}), "biz_id": business_id})
+                    await db.commit()
+            except Exception:
+                pass
+
+    import asyncio
+    asyncio.create_task(_pipeline())
 
 
 @app.post("/trigger/{workflow_name}", response_class=HTMLResponse)

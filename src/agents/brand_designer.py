@@ -103,19 +103,22 @@ class BrandDesigner(BaseAgent):
 
         kit = _parse_brand_kit(response_text)
 
-        # Check domains for name options
+        # Check domains for name options (graceful — Namecheap key may not be configured)
         if kit and kit.get("name_options"):
-            all_domains = []
-            for opt in kit["name_options"]:
-                variants = _generate_domain_variants(opt.get("name", ""))
-                all_domains.extend(variants)
-            if all_domains:
-                checks = await namecheap.check_domains_batch(all_domains)
-                avail_map = {c["domain"]: c.get("available", False) for c in checks}
+            try:
+                all_domains = []
                 for opt in kit["name_options"]:
-                    slug = opt.get("name", "").lower().replace(" ", "").replace("'", "").replace("î", "i").replace("é", "e")
-                    opt["domain_ca"] = "available" if avail_map.get(f"{slug}.ca") else "taken"
-                    opt["domain_com"] = "available" if avail_map.get(f"{slug}.com") else "taken"
+                    variants = _generate_domain_variants(opt.get("name", ""))
+                    all_domains.extend(variants)
+                if all_domains:
+                    checks = await namecheap.check_domains_batch(all_domains)
+                    avail_map = {c["domain"]: c.get("available", False) for c in checks}
+                    for opt in kit["name_options"]:
+                        slug = opt.get("name", "").lower().replace(" ", "").replace("'", "").replace("î", "i").replace("é", "e")
+                        opt["domain_ca"] = "available" if avail_map.get(f"{slug}.ca") else "taken"
+                        opt["domain_com"] = "available" if avail_map.get(f"{slug}.com") else "taken"
+            except Exception as exc:
+                logger.warning("domain_check_skipped", error=str(exc))
 
         # Save light brand kit
         if kit and business_id:
@@ -220,19 +223,23 @@ class BrandDesigner(BaseAgent):
         if not kit or not kit.get("name_options"):
             return {"domain_results": [], "brand_kit": kit}
 
-        all_domains = []
-        for opt in kit["name_options"]:
-            all_domains.extend(_generate_domain_variants(opt.get("name", "")))
+        checks = []
+        try:
+            all_domains = []
+            for opt in kit["name_options"]:
+                all_domains.extend(_generate_domain_variants(opt.get("name", "")))
 
-        checks = await namecheap.check_domains_batch(all_domains)
-        avail_map = {c["domain"]: c.get("available", False) for c in checks}
+            checks = await namecheap.check_domains_batch(all_domains)
+            avail_map = {c["domain"]: c.get("available", False) for c in checks}
 
-        for opt in kit["name_options"]:
-            slug = opt.get("name", "").lower().replace(" ", "").replace("'", "").replace("î", "i").replace("é", "e")
-            opt["domain_ca"] = "available" if avail_map.get(f"{slug}.ca") else "taken"
-            opt["domain_com"] = "available" if avail_map.get(f"{slug}.com") else "taken"
-            opt["domain_io"] = "available" if avail_map.get(f"{slug}.io") else "taken"
-            opt["domain_co"] = "available" if avail_map.get(f"{slug}.co") else "taken"
+            for opt in kit["name_options"]:
+                slug = opt.get("name", "").lower().replace(" ", "").replace("'", "").replace("î", "i").replace("é", "e")
+                opt["domain_ca"] = "available" if avail_map.get(f"{slug}.ca") else "taken"
+                opt["domain_com"] = "available" if avail_map.get(f"{slug}.com") else "taken"
+                opt["domain_io"] = "available" if avail_map.get(f"{slug}.io") else "taken"
+                opt["domain_co"] = "available" if avail_map.get(f"{slug}.co") else "taken"
+        except Exception as exc:
+            logger.warning("domain_check_skipped", error=str(exc))
 
         return {"domain_results": checks, "brand_kit": kit}
 

@@ -168,7 +168,7 @@ async def validate_idea(idea_id: int, user: str = Depends(verify_credentials)):
 
 @router.post("/{idea_id}/approve", response_class=HTMLResponse)
 async def approve_idea(idea_id: int, user: str = Depends(verify_credentials)):
-    """Advance validated → approved. Creates a business entry. Logs to console."""
+    """Approve idea → create business → auto-trigger Brand Designer + Builder."""
     async with SessionLocal() as db:
         row = (await db.execute(text(
             "SELECT id, name, niche, status FROM ideas WHERE id = :id"
@@ -178,21 +178,32 @@ async def approve_idea(idea_id: int, user: str = Depends(verify_credentials)):
 
         await db.execute(text("UPDATE ideas SET status = 'approved', updated_at = NOW() WHERE id = :id"), {"id": idea_id})
 
-        # Create a business entry so it appears on the Businesses page
         slug = (row.name or "unnamed").lower().replace(" ", "-").replace("'", "")[:50]
         existing = (await db.execute(text("SELECT id FROM businesses WHERE idea_id = :id"), {"id": idea_id})).fetchone()
-        if not existing:
-            await db.execute(
+        business_id = None
+        if existing:
+            business_id = existing.id
+        else:
+            biz_row = (await db.execute(
                 text(
                     "INSERT INTO businesses (idea_id, name, slug, niche, status) "
-                    "VALUES (:idea_id, :name, :slug, :niche, 'setup')"
+                    "VALUES (:idea_id, :name, :slug, :niche, 'setup') RETURNING id"
                 ),
                 {"idea_id": idea_id, "name": row.name, "slug": slug, "niche": row.niche},
-            )
+            )).fetchone()
+            business_id = biz_row.id
 
-        await _log_idea_event(db, idea_id, f"idea_approved: {row.name} → business created", row.status, "approved")
+        await _log_idea_event(db, idea_id, f"idea_approved: {row.name} → business created, build pipeline starting", row.status, "approved")
         await db.commit()
-    return HTMLResponse('<span class="text-brand">→ Approved — business created</span>')
+
+    # Auto-trigger the build pipeline (Brand Designer → Builder)
+    if business_id:
+        from src.dashboard.app import run_build_pipeline
+        await run_build_pipeline(business_id)
+
+    return HTMLResponse(
+        '<span class="text-brand animate-pulse">→ Approved — building started (Brand → Code → GitHub)... check Console</span>'
+    )
 
 
 @router.post("/{idea_id}/archive", response_class=HTMLResponse)

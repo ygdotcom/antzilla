@@ -295,11 +295,104 @@ class Builder(BaseAgent):
             "auto_fixed": not all_compliant,
         }
 
-    async def push_to_github(self, context) -> dict:
-        """Step 4: Push generated code to the GitHub repo."""
+    async def create_github_repo(self, context) -> dict:
+        """Step 4: Create a GitHub repo from the template if one doesn't exist."""
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
         github_repo = input_data.get("github_repo", "")
+
+        token = settings.get("GITHUB_TOKEN")
+        if not token:
+            logger.warning("github_token_missing")
+            return {"repo": "", "created": False, "error": "GITHUB_TOKEN not configured"}
+
+        # If a repo was provided (by Domain Provisioner), use it
+        if github_repo:
+            return {"repo": github_repo, "created": False}
+
+        # Derive repo name from business
+        async with SessionLocal() as db:
+            biz = (await db.execute(
+                text("SELECT slug FROM businesses WHERE id = :id"), {"id": business_id}
+            )).fetchone() if business_id else None
+        repo_name = biz.slug if biz else f"factory-biz-{business_id}"
+
+        github_org = settings.get("GITHUB_ORG", "ygdotcom")
+        full_name = f"{github_org}/{repo_name}"
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+            }
+            # Check if repo already exists
+            check = await client.get(
+                f"https://api.github.com/repos/{full_name}", headers=headers
+            )
+            if check.status_code == 200:
+                logger.info("github_repo_exists", repo=full_name)
+                if business_id:
+                    async with SessionLocal() as db:
+                        await db.execute(text(
+                            "UPDATE businesses SET github_repo = :repo, updated_at = NOW() WHERE id = :id"
+                        ), {"repo": full_name, "id": business_id})
+                        await db.commit()
+                return {"repo": full_name, "created": False}
+
+            # Create repo
+            resp = await client.post(
+                f"https://api.github.com/orgs/{github_org}/repos",
+                headers=headers,
+                json={
+                    "name": repo_name,
+                    "description": f"Factory-built SaaS: {repo_name}",
+                    "private": True,
+                    "auto_init": True,
+                },
+            )
+            if resp.status_code == 404:
+                # Org doesn't exist — create under personal account
+                resp = await client.post(
+                    "https://api.github.com/user/repos",
+                    headers=headers,
+                    json={
+                        "name": repo_name,
+                        "description": f"Factory-built SaaS: {repo_name}",
+                        "private": True,
+                        "auto_init": True,
+                    },
+                )
+            if resp.status_code in (201, 200):
+                created_repo = resp.json()
+                full_name = created_repo.get("full_name", full_name)
+                logger.info("github_repo_created", repo=full_name)
+            else:
+                logger.error("github_repo_create_failed", status=resp.status_code, body=resp.text[:300])
+                return {"repo": "", "created": False, "error": f"GitHub API {resp.status_code}"}
+
+        if business_id:
+            async with SessionLocal() as db:
+                await db.execute(text(
+                    "UPDATE businesses SET github_repo = :repo, updated_at = NOW() WHERE id = :id"
+                ), {"repo": full_name, "id": business_id})
+                await db.commit()
+
+        await self.log_execution(
+            action="create_github_repo",
+            result={"repo": full_name},
+            business_id=business_id,
+        )
+        return {"repo": full_name, "created": True}
+
+    async def push_to_github(self, context) -> dict:
+        """Step 5: Push generated code to the GitHub repo."""
+        input_data = context.workflow_input()
+        business_id = input_data.get("business_id")
+        repo_info = context.step_output("create_github_repo")
+        github_repo = repo_info.get("repo", "")
+        if not github_repo:
+            return {"pushed_files": [], "repo": "", "error": "No repo available"}
+
         code = context.step_output("generate_code")
         rls = context.step_output("verify_rls")
 
@@ -307,158 +400,92 @@ class Builder(BaseAgent):
         files = code_output.get("files", [])
         migrations = rls.get("fixed_migrations", [])
 
+        import base64
         pushed_files = []
         async with httpx.AsyncClient(timeout=15) as client:
             headers = {
-                "Authorization": f"Bearer {settings.GITHUB_TOKEN}",
+                "Authorization": f"Bearer {settings.get('GITHUB_TOKEN')}",
                 "Accept": "application/vnd.github+json",
             }
 
+            all_files = []
             for f in files:
-                path = f.get("path", "")
-                content = f.get("content", "")
-                if not path or not content:
-                    continue
-                try:
-                    import base64
-                    encoded = base64.b64encode(content.encode()).decode()
-                    resp = await client.put(
-                        f"https://api.github.com/repos/{github_repo}/contents/{path}",
-                        headers=headers,
-                        json={
-                            "message": f"feat: add {path}",
-                            "content": encoded,
-                        },
-                    )
-                    pushed_files.append({"path": path, "status": resp.status_code})
-                except Exception as exc:
-                    pushed_files.append({"path": path, "status": "error", "error": str(exc)})
-
+                if f.get("path") and f.get("content"):
+                    all_files.append({"path": f["path"], "content": f["content"]})
             for mig in migrations:
-                filename = mig.get("filename", "002_tables.sql")
-                content = mig.get("content", "")
-                if not content:
-                    continue
+                if mig.get("content"):
+                    fn = mig.get("filename", "002_tables.sql")
+                    all_files.append({"path": f"supabase/migrations/{fn}", "content": mig["content"]})
+
+            for f in all_files:
                 try:
-                    import base64
-                    encoded = base64.b64encode(content.encode()).decode()
-                    path = f"supabase/migrations/{filename}"
-                    resp = await client.put(
-                        f"https://api.github.com/repos/{github_repo}/contents/{path}",
+                    # Check if file exists (get SHA for update)
+                    existing = await client.get(
+                        f"https://api.github.com/repos/{github_repo}/contents/{f['path']}",
                         headers=headers,
-                        json={
-                            "message": f"feat: migration {filename}",
-                            "content": encoded,
-                        },
                     )
-                    pushed_files.append({"path": path, "status": resp.status_code})
+                    payload = {
+                        "message": f"feat: add {f['path']}",
+                        "content": base64.b64encode(f["content"].encode()).decode(),
+                    }
+                    if existing.status_code == 200:
+                        payload["sha"] = existing.json().get("sha")
+                        payload["message"] = f"feat: update {f['path']}"
+
+                    resp = await client.put(
+                        f"https://api.github.com/repos/{github_repo}/contents/{f['path']}",
+                        headers=headers,
+                        json=payload,
+                    )
+                    pushed_files.append({"path": f["path"], "status": resp.status_code})
                 except Exception as exc:
-                    pushed_files.append({"path": path, "status": "error", "error": str(exc)})
+                    pushed_files.append({"path": f["path"], "status": "error", "error": str(exc)})
 
         await self.log_execution(
             action="push_to_github",
-            result={"files_pushed": len(pushed_files)},
+            result={"files_pushed": len(pushed_files), "repo": github_repo},
             business_id=business_id,
         )
 
         return {"pushed_files": pushed_files, "repo": github_repo}
 
-    async def deploy_vercel(self, context) -> dict:
-        """Step 5: Trigger Vercel deployment."""
-        input_data = context.workflow_input()
-        vercel_project_id = input_data.get("vercel_project_id", "")
-        github_repo = input_data.get("github_repo", "")
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            try:
-                resp = await client.post(
-                    "https://api.vercel.com/v13/deployments",
-                    headers={"Authorization": f"Bearer {settings.VERCEL_TOKEN}"},
-                    json={
-                        "name": vercel_project_id,
-                        "gitSource": {
-                            "type": "github",
-                            "repo": github_repo,
-                            "ref": "main",
-                        },
-                    },
-                )
-                resp.raise_for_status()
-                deployment = resp.json()
-                deploy_url = deployment.get("url", "")
-                deploy_id = deployment.get("id", "")
-                logger.info("vercel_deployed", url=deploy_url, id=deploy_id)
-                return {"deployment_url": deploy_url, "deployment_id": deploy_id, "success": True}
-            except Exception as exc:
-                logger.error("vercel_deploy_failed", error=str(exc))
-                return {"deployment_url": None, "deployment_id": None, "success": False, "error": str(exc)}
-
-    async def run_lighthouse(self, context) -> dict:
-        """Step 6: Run Lighthouse audit on the deployed site."""
-        deploy = context.step_output("deploy_vercel")
-        url = deploy.get("deployment_url")
-
-        if not url:
-            return {"lighthouse": None, "reason": "no deployment URL"}
-
-        # Use PageSpeed Insights API (free, includes Lighthouse)
-        async with httpx.AsyncClient(timeout=60) as client:
-            try:
-                resp = await client.get(
-                    "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
-                    params={
-                        "url": f"https://{url}",
-                        "strategy": "mobile",
-                        "category": ["performance", "accessibility", "best-practices", "seo"],
-                    },
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    categories = data.get("lighthouseResult", {}).get("categories", {})
-                    scores = {
-                        cat: round(info.get("score", 0) * 100)
-                        for cat, info in categories.items()
-                    }
-                    logger.info("lighthouse_scores", url=url, scores=scores)
-                    return {"lighthouse_scores": scores, "url": url}
-                return {"lighthouse_scores": None, "status": resp.status_code}
-            except Exception as exc:
-                return {"lighthouse_scores": None, "error": str(exc)}
-
-    async def notify_agents(self, context) -> dict:
-        """Step 7: Update business status and log completion."""
+    async def finalize(self, context) -> dict:
+        """Step 6: Update business status and log completion."""
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
-        deploy = context.step_output("deploy_vercel")
-        lighthouse = context.step_output("run_lighthouse")
+        repo_info = context.step_output("create_github_repo")
+        push_info = context.step_output("push_to_github")
+
+        github_repo = repo_info.get("repo", "")
+        files_pushed = len(push_info.get("pushed_files", []))
 
         async with SessionLocal() as db:
             if business_id:
                 await db.execute(
                     text(
-                        "UPDATE businesses SET status = 'pre_launch', "
+                        "UPDATE businesses SET status = 'building', github_repo = :repo, "
                         "updated_at = NOW() WHERE id = :id"
                     ),
-                    {"id": business_id},
+                    {"repo": github_repo, "id": business_id},
                 )
                 await db.commit()
 
         await self.log_execution(
-            action="notify_agents",
+            action="build_complete",
             result={
                 "business_id": business_id,
-                "deployment": deploy.get("deployment_url"),
-                "lighthouse": lighthouse.get("lighthouse_scores"),
-                "status": "pre_launch",
+                "github_repo": github_repo,
+                "files_pushed": files_pushed,
+                "status": "building",
             },
             business_id=business_id,
         )
 
         return {
             "business_id": business_id,
-            "deployment_url": deploy.get("deployment_url"),
-            "lighthouse_scores": lighthouse.get("lighthouse_scores"),
-            "status": "pre_launch",
+            "github_repo": github_repo,
+            "files_pushed": files_pushed,
+            "status": "building",
         }
 
 
@@ -480,19 +507,15 @@ def register(hatchet_instance):
         return await agent.verify_rls(ctx)
 
     @wf.task(execution_timeout="5m", retries=2)
+    async def create_github_repo(input, ctx):
+        return await agent.create_github_repo(ctx)
+
+    @wf.task(execution_timeout="5m", retries=2)
     async def push_to_github(input, ctx):
         return await agent.push_to_github(ctx)
 
-    @wf.task(execution_timeout="5m", retries=2)
-    async def deploy_vercel(input, ctx):
-        return await agent.deploy_vercel(ctx)
-
     @wf.task(execution_timeout="3m", retries=1)
-    async def run_lighthouse(input, ctx):
-        return await agent.run_lighthouse(ctx)
-
-    @wf.task(execution_timeout="3m", retries=1)
-    async def notify_agents(input, ctx):
-        return await agent.notify_agents(ctx)
+    async def finalize(input, ctx):
+        return await agent.finalize(ctx)
 
     return wf
