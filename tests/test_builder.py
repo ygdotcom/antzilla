@@ -359,7 +359,7 @@ class TestArchitecturePrompt:
 
     def test_mentions_empty_dashboard_ban(self):
         from src.agents.builder import ARCHITECTURE_PROMPT
-        assert "vide" in ARCHITECTURE_PROMPT.lower() or "empty" in ARCHITECTURE_PROMPT.lower()
+        assert "empty" in ARCHITECTURE_PROMPT.lower() or "pre-populate" in ARCHITECTURE_PROMPT.lower()
 
     def test_mentions_reverse_trial(self):
         from src.agents.builder import ARCHITECTURE_PROMPT
@@ -382,11 +382,9 @@ class TestArchitecturePrompt:
         from src.agents.builder import ARCHITECTURE_PROMPT
         assert "3 champs" in ARCHITECTURE_PROMPT or "3 fields" in ARCHITECTURE_PROMPT.lower()
 
-    def test_mentions_data_flywheel(self):
-        from src.agents.builder import CODE_GEN_PROMPT
-        # Data flywheel is part of the architecture prompt
+    def test_mentions_stripe_level_quality(self):
         from src.agents.builder import ARCHITECTURE_PROMPT
-        assert "flywheel" in ARCHITECTURE_PROMPT.lower() or "agreg" in ARCHITECTURE_PROMPT.lower()
+        assert "stripe" in ARCHITECTURE_PROMPT.lower() or "premium" in ARCHITECTURE_PROMPT.lower()
 
 
 class TestOnboardingRequirements:
@@ -400,6 +398,6 @@ class TestOnboardingRequirements:
         from src.agents.builder import CODE_GEN_PROMPT
         assert "pré-peuplé" in CODE_GEN_PROMPT.lower() or "pre-populate" in CODE_GEN_PROMPT.lower()
 
-    def test_code_gen_requires_onboarding_checklist(self):
+    def test_code_gen_requires_never_empty(self):
         from src.agents.builder import CODE_GEN_PROMPT
-        assert "OnboardingChecklist" in CODE_GEN_PROMPT
+        assert "never empty" in CODE_GEN_PROMPT.lower() or "pre-populated" in CODE_GEN_PROMPT.lower()
