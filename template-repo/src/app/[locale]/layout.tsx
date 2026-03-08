@@ -8,6 +8,7 @@ import { GoogleAnalytics } from '@/components/google-analytics';
 import { PlausibleAnalytics } from '@/components/plausible';
 import { SchemaOrg } from '@/components/schema-org';
 import '@/app/globals.css';
+import '@/app/brand.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 

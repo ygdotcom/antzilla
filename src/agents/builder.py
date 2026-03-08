@@ -744,24 +744,58 @@ class Builder(BaseAgent):
                 fn = mig.get("filename", "002_tables.sql")
                 all_files.append({"path": f"supabase/migrations/{fn}", "content": mig["content"]})
 
-        # Add Copywriter messages files (FR + EN)
+        # Generate brand.css from brand kit
+        brand_kit = input_data.get("brand_kit", {})
+        brand_css_content = ""
+        if brand_kit and brand_kit.get("colors"):
+            colors = brand_kit["colors"]
+            fonts = brand_kit.get("typography", {})
+            brand_css_content = f""":root {{
+  --color-primary: {colors.get("primary", "#2563eb")};
+  --color-primary-50: {colors.get("background_light", "#eff6ff")};
+  --color-primary-500: {colors.get("primary", "#2563eb")};
+  --color-primary-600: {colors.get("secondary", "#1d4ed8")};
+  --color-accent: {colors.get("accent", "#8b5cf6")};
+  --color-background: {colors.get("background_light", "#ffffff")};
+  --color-foreground: {colors.get("text_primary", "#0f172a")};
+  --font-sans: '{fonts.get("body", "Plus Jakarta Sans")}', system-ui, sans-serif;
+  --font-heading: '{fonts.get("heading", "Cabinet Grotesk")}', system-ui, sans-serif;
+}}"""
+
+        # Push messages files FIRST (separate commit — guaranteed regardless of code gen)
         messages_fr = input_data.get("messages_fr", {})
         messages_en = input_data.get("messages_en", {})
+        msg_files = []
         if messages_fr:
-            all_files.append({"path": "messages/fr.json", "content": json.dumps(messages_fr, ensure_ascii=False, indent=2)})
-            all_files.append({"path": "src/messages/fr.json", "content": json.dumps(messages_fr, ensure_ascii=False, indent=2)})
+            msg_files.append({"path": "messages/fr.json", "content": json.dumps(messages_fr, ensure_ascii=False, indent=2)})
+            msg_files.append({"path": "src/messages/fr.json", "content": json.dumps(messages_fr, ensure_ascii=False, indent=2)})
         if messages_en:
-            all_files.append({"path": "messages/en.json", "content": json.dumps(messages_en, ensure_ascii=False, indent=2)})
-            all_files.append({"path": "src/messages/en.json", "content": json.dumps(messages_en, ensure_ascii=False, indent=2)})
+            msg_files.append({"path": "messages/en.json", "content": json.dumps(messages_en, ensure_ascii=False, indent=2)})
+            msg_files.append({"path": "src/messages/en.json", "content": json.dumps(messages_en, ensure_ascii=False, indent=2)})
 
-        if not all_files:
+        # Add brand.css
+        if brand_css_content:
+            msg_files.append({"path": "src/app/brand.css", "content": brand_css_content})
+
+        if msg_files:
+            msg_result = await self._batch_commit(
+                github_repo, msg_files,
+                f"feat: add bilingual copy + brand ({len(msg_files)} files)"
+            )
+            logger.info("messages_and_brand_pushed", files=msg_result.get("files", 0))
+
+        if not all_files and not msg_files:
             logger.warning("no_files_to_push")
             return {"pushed_files": [], "repo": github_repo}
 
-        result = await self._batch_commit(
-            github_repo, all_files,
-            f"feat: add generated business code ({len(all_files)} files)"
-        )
+        # Push generated code (may be empty if code gen JSON parse failed)
+        result = {"files": 0}
+        if all_files:
+            result = await self._batch_commit(
+                github_repo, all_files,
+                f"feat: add generated business code ({len(all_files)} files)"
+            )
+            logger.info("code_pushed", files=result.get("files", 0))
 
         await self.log_execution(
             action="push_to_github",
