@@ -140,6 +140,7 @@ services:
       HATCHET_CLIENT_TLS_STRATEGY: none
     volumes:
       - ./src:/app/src
+      - ./prompts:/app/prompts
 
   # ── Plausible Analytics (internal only — accessed via Caddy :8444) ──
   plausible-events-db:
