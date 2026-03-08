@@ -31,14 +31,22 @@ SCRAPE_SOURCES = [
     },
 ]
 
-# Serper-based sources replace Reddit (which blocks scraping with 403)
+# Serper queries — broad across industries, rotated
 SERPER_QUERIES = [
     "small SaaS tool Canada doesn't have site:indiehackers.com",
     "micro SaaS tool spreadsheet replacement 2026",
-    "Shopify app low rated complaints Canada",
     "niche SaaS tool under 20 employees launched 2025 2026",
-    "vertical SaaS tool for contractors tradespeople",
-    "SaaS tool Quebec Canada bilingual",
+    "vertical SaaS tool for contractors tradespeople small business",
+    "Shopify app low rated complaints small business",
+    "SaaS tool agriculture farming Canada",
+    "SaaS tool oil gas Alberta compliance",
+    "SaaS tool real estate property management Canada",
+    "SaaS tool trucking logistics Canadian compliance",
+    "SaaS tool restaurant health inspection Canada",
+    "SaaS tool auto dealership compliance",
+    "SaaS tool veterinary clinic invoicing",
+    "SaaS tool snow removal landscaping scheduling",
+    "niche compliance tool small business 2026",
 ]
 
 SCORE_THRESHOLD = 7.0
@@ -164,12 +172,14 @@ class IdeaFactory(BaseAgent):
                 data = await _scrape_source(client, source)
                 results.append(data)
 
-        # Use Serper for research queries (replaces Reddit which blocks with 403)
+        # Use Serper for research queries — pick 6 random to get variety
+        import random
         from src.config import settings
         serper_key = settings.get("SERPER_API_KEY")
         if serper_key:
+            queries_this_run = random.sample(SERPER_QUERIES, min(6, len(SERPER_QUERIES)))
             async with httpx.AsyncClient(timeout=15) as client:
-                for query in SERPER_QUERIES:
+                for query in queries_this_run:
                     try:
                         resp = await client.post(
                             "https://google.serper.dev/search",
@@ -211,12 +221,31 @@ class IdeaFactory(BaseAgent):
         if cal_block:
             system_prompt += f"\n\n{cal_block}"
 
-        scraped_summary = json.dumps(scraped["scraped_data"], default=str)[:30_000]
+        # Fetch existing ideas for deduplication
+        existing_ideas = []
+        try:
+            async with SessionLocal() as db:
+                rows = (await db.execute(text(
+                    "SELECT name, niche, status FROM ideas ORDER BY id DESC LIMIT 100"
+                ))).fetchall()
+                existing_ideas = [{"name": r.name, "niche": r.niche, "status": r.status} for r in rows]
+        except Exception:
+            pass
+
+        scraped_summary = json.dumps(scraped["scraped_data"], default=str)[:25_000]
+
+        user_msg = scraped_summary
+        if existing_ideas:
+            dedup_list = json.dumps(existing_ideas, default=str)
+            user_msg = (
+                f"IDEAS ALREADY IN DATABASE (DO NOT SUGGEST THESE AGAIN):\n{dedup_list}\n\n"
+                f"SCRAPED DATA:\n{scraped_summary}"
+            )
 
         response_text, cost = await call_claude(
             model_tier=model_tier,
             system=system_prompt,
-            user=scraped_summary,
+            user=user_msg,
             max_tokens=8192,
             temperature=0.4,
         )
