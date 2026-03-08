@@ -225,17 +225,36 @@ class Builder(BaseAgent):
             "niche": niche,
         }, default=str)[:30_000]
 
+        # Code gen needs lots of tokens — files contain full source code
         response, cost = await call_claude(
             model_tier=model_tier,
             system=CODE_GEN_PROMPT,
             user=user_payload,
-            max_tokens=8192,
+            max_tokens=16384,
             temperature=0.2,
         )
 
         code_output = _parse_json_response(response)
-        if not code_output:
-            code_output = {"files": [], "migrations": [], "error": "parse failed"}
+        if not code_output or not code_output.get("files"):
+            # Claude sometimes returns code blocks instead of pure JSON.
+            # Try extracting individual file blocks as a fallback.
+            logger.warning("code_gen_json_parse_failed", response_len=len(response))
+            files = []
+            # Look for ```filename patterns
+            import re
+            file_blocks = re.findall(
+                r'(?:^|\n)(?:###?\s*)?`?([^\n`]+\.[a-z]{1,4})`?\s*\n```[a-z]*\n(.*?)```',
+                response, re.DOTALL,
+            )
+            for path, content in file_blocks:
+                path = path.strip().strip("`").strip()
+                if path and content.strip():
+                    files.append({"path": path, "content": content.strip(), "action": "replace"})
+            if files:
+                code_output = {"files": files, "migrations": [], "recovered": True}
+                logger.info("code_gen_recovered", files=len(files))
+            else:
+                code_output = {"files": [], "migrations": [], "error": "parse failed", "raw_preview": response[:500]}
 
         await self.log_execution(
             action="generate_code",
@@ -506,13 +525,21 @@ class Builder(BaseAgent):
                     logger.error("vercel_project_create_failed", status=create_resp.status_code, body=create_resp.text[:300])
                     return {"deployment_url": None, "success": False, "error": f"Vercel project create: {create_resp.status_code}"}
 
+                # Get repo ID from GitHub for Vercel
+                gh_token = settings.get("GITHUB_TOKEN")
+                gh_resp = await client.get(
+                    f"https://api.github.com/repos/{github_repo}",
+                    headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/vnd.github+json"},
+                )
+                repo_id = str(gh_resp.json().get("id", "")) if gh_resp.status_code == 200 else ""
+
                 # Trigger deployment
                 deploy_resp = await client.post(
                     "https://api.vercel.com/v13/deployments",
                     headers=headers,
                     json={
                         "name": repo_name,
-                        "gitSource": {"type": "github", "repo": github_repo, "ref": "main"},
+                        "gitSource": {"type": "github", "repoId": repo_id, "ref": "main"},
                     },
                 )
                 if deploy_resp.status_code in (200, 201):
