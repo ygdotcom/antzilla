@@ -188,28 +188,27 @@ class FulfillmentAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="fulfillment")
     class _Registered(FulfillmentAgent):
         @hatchet_instance.task(execution_timeout="2m", retries=2)
-        async def receive_job(self, context: Context) -> dict:
+        async def receive_job(self, context) -> dict:
             return await FulfillmentAgent.receive_job(self, context)
 
         @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def process_job(self, context: Context) -> dict:
+        async def process_job(self, context) -> dict:
             return await FulfillmentAgent.process_job(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def generate_deliverable(self, context: Context) -> dict:
+        async def generate_deliverable(self, context) -> dict:
             return await FulfillmentAgent.generate_deliverable(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def deliver_to_customer(self, context: Context) -> dict:
+        async def deliver_to_customer(self, context) -> dict:
             return await FulfillmentAgent.deliver_to_customer(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def update_status(self, context: Context) -> dict:
+        async def update_status(self, context) -> dict:
             return await FulfillmentAgent.update_status(self, context)
 
     return _Registered

@@ -219,18 +219,17 @@ class SupportAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="support-agent")
     class _Registered(SupportAgent):
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def handle_ticket(self, context: Context) -> dict:
+        async def handle_ticket(self, context) -> dict:
             return await SupportAgent.handle_ticket(self, context)
 
     @hatchet_instance.workflow(name="support-churn-check", on_crons=["0 14 * * *"])
     class _ChurnCheck(SupportAgent):
         @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def check_churn_signals(self, context: Context) -> dict:
+        async def check_churn_signals(self, context) -> dict:
             return await SupportAgent.check_churn_signals(self, context)
 
     return _Registered, _ChurnCheck

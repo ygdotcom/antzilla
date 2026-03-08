@@ -252,36 +252,35 @@ class Validator(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="validator")
     class _Registered(Validator):
         @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def request_light_brand(self, context: Context) -> dict:
+        async def request_light_brand(self, context) -> dict:
             return await Validator.request_light_brand(self, context)
 
         @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def generate_landing_page(self, context: Context) -> dict:
+        async def generate_landing_page(self, context) -> dict:
             return await Validator.generate_landing_page(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def deploy_landing(self, context: Context) -> dict:
+        async def deploy_landing(self, context) -> dict:
             return await Validator.deploy_landing(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def launch_ads(self, context: Context) -> dict:
+        async def launch_ads(self, context) -> dict:
             return await Validator.launch_ads(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def monitor_daily(self, context: Context) -> dict:
+        async def monitor_daily(self, context) -> dict:
             return await Validator.monitor_daily(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def evaluate_results(self, context: Context) -> dict:
+        async def evaluate_results(self, context) -> dict:
             return await Validator.evaluate_results(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def report_to_meta(self, context: Context) -> dict:
+        async def report_to_meta(self, context) -> dict:
             return await Validator.report_to_meta(self, context)
 
     return _Registered

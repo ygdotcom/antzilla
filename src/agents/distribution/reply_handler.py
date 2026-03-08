@@ -274,12 +274,11 @@ class ReplyHandler(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="reply-handler", on_crons=["*/30 * * * *"])
     class _Registered(ReplyHandler):
         @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def process_replies(self, context: Context) -> dict:
+        async def process_replies(self, context) -> dict:
             return await ReplyHandler.process_replies(self, context)
 
     return _Registered

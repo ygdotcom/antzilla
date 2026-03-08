@@ -192,7 +192,6 @@ class I18nAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(
         name="i18n-agent",
@@ -200,23 +199,23 @@ def register(hatchet_instance) -> type:
     )
     class _Registered(I18nAgent):
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def pull_messages(self, context: Context) -> dict:
+        async def pull_messages(self, context) -> dict:
             return await I18nAgent.pull_messages(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def validate_completeness(self, context: Context) -> dict:
+        async def validate_completeness(self, context) -> dict:
             return await I18nAgent.validate_completeness(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def quality_check(self, context: Context) -> dict:
+        async def quality_check(self, context) -> dict:
             return await I18nAgent.quality_check(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def update_glossary(self, context: Context) -> dict:
+        async def update_glossary(self, context) -> dict:
             return await I18nAgent.update_glossary(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def report_issues(self, context: Context) -> dict:
+        async def report_issues(self, context) -> dict:
             return await I18nAgent.report_issues(self, context)
 
     return _Registered

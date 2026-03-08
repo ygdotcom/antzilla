@@ -268,7 +268,6 @@ class EmailNurture(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(
         name="email-nurture",
@@ -276,23 +275,23 @@ def register(hatchet_instance) -> type:
     )
     class _Registered(EmailNurture):
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def identify_recipients(self, context: Context) -> dict:
+        async def identify_recipients(self, context) -> dict:
             return await EmailNurture.identify_recipients(self, context)
 
         @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def generate_email(self, context: Context) -> dict:
+        async def generate_email(self, context) -> dict:
             return await EmailNurture.generate_email(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def check_frequency_cap(self, context: Context) -> dict:
+        async def check_frequency_cap(self, context) -> dict:
             return await EmailNurture.check_frequency_cap(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def send_email(self, context: Context) -> dict:
+        async def send_email(self, context) -> dict:
             return await EmailNurture.send_email(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def log(self, context: Context) -> dict:
+        async def log(self, context) -> dict:
             return await EmailNurture.log(self, context)
 
     return _Registered

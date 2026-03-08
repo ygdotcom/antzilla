@@ -265,28 +265,27 @@ class SelfReflectionAgent(BaseAgent):
 
 def register(hatchet_instance) -> type:
     """Register SelfReflectionAgent as a Hatchet workflow."""
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="self-reflection", on_crons=["0 8 * * 0"])
     class _RegisteredSelfReflectionAgent(SelfReflectionAgent):
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def gather_data(self, context: Context) -> dict:
+        async def gather_data(self, context) -> dict:
             return await SelfReflectionAgent.gather_data(self, context)
 
         @hatchet_instance.task(execution_timeout="15m", retries=2)
-        async def analyze(self, context: Context) -> dict:
+        async def analyze(self, context) -> dict:
             return await SelfReflectionAgent.analyze(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def categorize_findings(self, context: Context) -> dict:
+        async def categorize_findings(self, context) -> dict:
             return await SelfReflectionAgent.categorize_findings(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=2)
-        async def save_improvements(self, context: Context) -> dict:
+        async def save_improvements(self, context) -> dict:
             return await SelfReflectionAgent.save_improvements(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def send_report(self, context: Context) -> dict:
+        async def send_report(self, context) -> dict:
             return await SelfReflectionAgent.send_report(self, context)
 
     return _RegisteredSelfReflectionAgent

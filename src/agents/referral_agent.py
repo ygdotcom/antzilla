@@ -301,24 +301,23 @@ class ReferralAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="referral-agent")
     class _Registered(ReferralAgent):
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def nps_trigger(self, context: Context) -> dict:
+        async def nps_trigger(self, context) -> dict:
             return await ReferralAgent.nps_trigger(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def track_and_reward(self, context: Context) -> dict:
+        async def track_and_reward(self, context) -> dict:
             return await ReferralAgent.track_and_reward(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def identify_ambassadors(self, context: Context) -> dict:
+        async def identify_ambassadors(self, context) -> dict:
             return await ReferralAgent.identify_ambassadors(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def nudge_non_sharers(self, context: Context) -> dict:
+        async def nudge_non_sharers(self, context) -> dict:
             return await ReferralAgent.nudge_non_sharers(self, context)
 
     return _Registered

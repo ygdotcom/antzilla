@@ -146,24 +146,23 @@ class UpsellAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="upsell-agent", on_crons=["0 15 * * 1"])
     class _Registered(UpsellAgent):
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def analyze_usage(self, context: Context) -> dict:
+        async def analyze_usage(self, context) -> dict:
             return await UpsellAgent.analyze_usage(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def generate_offer(self, context: Context) -> dict:
+        async def generate_offer(self, context) -> dict:
             return await UpsellAgent.generate_offer(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def send_offer(self, context: Context) -> dict:
+        async def send_offer(self, context) -> dict:
             return await UpsellAgent.send_offer(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def track_conversion(self, context: Context) -> dict:
+        async def track_conversion(self, context) -> dict:
             return await UpsellAgent.track_conversion(self, context)
 
     return _Registered

@@ -273,30 +273,29 @@ class BrandDesigner(BaseAgent):
 
 def register(hatchet_instance) -> type:
     """Register BrandDesigner with two workflow variants: light and full."""
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="brand-designer-light")
     class _LightBrand(BrandDesigner):
         @hatchet_instance.task(execution_timeout="8m", retries=2)
-        async def quick_brand(self, context: Context) -> dict:
+        async def quick_brand(self, context) -> dict:
             return await BrandDesigner.quick_brand(self, context)
 
     @hatchet_instance.workflow(name="brand-designer-full")
     class _FullBrand(BrandDesigner):
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def research_inspiration(self, context: Context) -> dict:
+        async def research_inspiration(self, context) -> dict:
             return await BrandDesigner.research_inspiration(self, context)
 
         @hatchet_instance.task(execution_timeout="8m", retries=2)
-        async def generate_brand_kit(self, context: Context) -> dict:
+        async def generate_brand_kit(self, context) -> dict:
             return await BrandDesigner.generate_brand_kit(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=2)
-        async def check_domains(self, context: Context) -> dict:
+        async def check_domains(self, context) -> dict:
             return await BrandDesigner.check_domains(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def save_brand_kit(self, context: Context) -> dict:
+        async def save_brand_kit(self, context) -> dict:
             return await BrandDesigner.save_brand_kit(self, context)
 
     return _LightBrand, _FullBrand

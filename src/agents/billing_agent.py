@@ -291,18 +291,17 @@ class BillingAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="billing-agent")
     class _Registered(BillingAgent):
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def handle_webhook(self, context: Context) -> dict:
+        async def handle_webhook(self, context) -> dict:
             return await BillingAgent.handle_webhook(self, context)
 
     @hatchet_instance.workflow(name="billing-pre-dunning", on_crons=["0 15 * * *"])
     class _PreDunning(BillingAgent):
         @hatchet_instance.task(execution_timeout="8m", retries=1)
-        async def pre_dunning_check(self, context: Context) -> dict:
+        async def pre_dunning_check(self, context) -> dict:
             return await BillingAgent.pre_dunning_check(self, context)
 
     return _Registered, _PreDunning

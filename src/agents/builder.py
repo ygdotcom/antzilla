@@ -464,36 +464,35 @@ class Builder(BaseAgent):
 
 def register(hatchet_instance) -> type:
     """Register Builder as a Hatchet workflow."""
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="builder")
     class _Registered(Builder):
         @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def generate_architecture(self, context: Context) -> dict:
+        async def generate_architecture(self, context) -> dict:
             return await Builder.generate_architecture(self, context)
 
         @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def generate_code(self, context: Context) -> dict:
+        async def generate_code(self, context) -> dict:
             return await Builder.generate_code(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def verify_rls(self, context: Context) -> dict:
+        async def verify_rls(self, context) -> dict:
             return await Builder.verify_rls(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def push_to_github(self, context: Context) -> dict:
+        async def push_to_github(self, context) -> dict:
             return await Builder.push_to_github(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def deploy_vercel(self, context: Context) -> dict:
+        async def deploy_vercel(self, context) -> dict:
             return await Builder.deploy_vercel(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def run_lighthouse(self, context: Context) -> dict:
+        async def run_lighthouse(self, context) -> dict:
             return await Builder.run_lighthouse(self, context)
 
         @hatchet_instance.task(execution_timeout="3m", retries=1)
-        async def notify_agents(self, context: Context) -> dict:
+        async def notify_agents(self, context) -> dict:
             return await Builder.notify_agents(self, context)
 
     return _Registered

@@ -206,32 +206,31 @@ class CompetitorWatchAgent(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="competitor-watch", on_crons=["0 9 * * 3"])
     class _Registered(CompetitorWatchAgent):
         @hatchet_instance.task(execution_timeout="10m", retries=1)
-        async def scrape_competitors(self, context: Context) -> dict:
+        async def scrape_competitors(self, context) -> dict:
             return await CompetitorWatchAgent.scrape_competitors(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def check_pricing_changes(self, context: Context) -> dict:
+        async def check_pricing_changes(self, context) -> dict:
             return await CompetitorWatchAgent.check_pricing_changes(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def check_product_hunt(self, context: Context) -> dict:
+        async def check_product_hunt(self, context) -> dict:
             return await CompetitorWatchAgent.check_product_hunt(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=1)
-        async def analyze_with_claude(self, context: Context) -> dict:
+        async def analyze_with_claude(self, context) -> dict:
             return await CompetitorWatchAgent.analyze_with_claude(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def alert_if_critical(self, context: Context) -> dict:
+        async def alert_if_critical(self, context) -> dict:
             return await CompetitorWatchAgent.alert_if_critical(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def log_report(self, context: Context) -> dict:
+        async def log_report(self, context) -> dict:
             return await CompetitorWatchAgent.log_report(self, context)
 
     return _Registered

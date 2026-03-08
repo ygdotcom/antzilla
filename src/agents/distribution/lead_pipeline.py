@@ -261,12 +261,11 @@ class LeadPipeline(BaseAgent):
 
 
 def register(hatchet_instance) -> type:
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="lead-pipeline", on_crons=["0 11 * * *"])
     class _Registered(LeadPipeline):
         @hatchet_instance.task(execution_timeout="25m", retries=1)
-        async def generate_leads(self, context: Context) -> dict:
+        async def generate_leads(self, context) -> dict:
             return await LeadPipeline.generate_leads(self, context)
 
     return _Registered

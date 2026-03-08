@@ -290,24 +290,23 @@ class IdeaFactory(BaseAgent):
 
 def register(hatchet_instance) -> type:
     """Register IdeaFactory as a Hatchet workflow — weekly Monday 5 AM ET (10 UTC)."""
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="idea-factory", on_crons=["0 10 * * 1"])
     class _RegisteredIdeaFactory(IdeaFactory):
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def scrape_sources(self, context: Context) -> dict:
+        async def scrape_sources(self, context) -> dict:
             return await IdeaFactory.scrape_sources(self, context)
 
         @hatchet_instance.task(execution_timeout="10m", retries=2)
-        async def filter_canadian_gap(self, context: Context) -> dict:
+        async def filter_canadian_gap(self, context) -> dict:
             return await IdeaFactory.filter_canadian_gap(self, context)
 
         @hatchet_instance.task(execution_timeout="2m", retries=1)
-        async def score_ideas(self, context: Context) -> dict:
+        async def score_ideas(self, context) -> dict:
             return await IdeaFactory.score_ideas(self, context)
 
         @hatchet_instance.task(execution_timeout="5m", retries=2)
-        async def save_and_notify(self, context: Context) -> dict:
+        async def save_and_notify(self, context) -> dict:
             return await IdeaFactory.save_and_notify(self, context)
 
     return _RegisteredIdeaFactory

@@ -173,24 +173,23 @@ class BudgetGuardianAgent(BaseAgent):
 
 def register(hatchet_instance) -> type:
     """Register BudgetGuardianAgent as a Hatchet workflow."""
-    from hatchet_sdk import Context
 
     @hatchet_instance.workflow(name="budget-guardian", on_crons=["0 * * * *"])
     class _RegisteredBudgetGuardian(BudgetGuardianAgent):
         @hatchet_instance.task(execution_timeout="1m", retries=2)
-        async def aggregate_costs(self, context: Context) -> dict:
+        async def aggregate_costs(self, context) -> dict:
             return await BudgetGuardianAgent.aggregate_costs(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def check_limits(self, context: Context) -> dict:
+        async def check_limits(self, context) -> dict:
             return await BudgetGuardianAgent.check_limits(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def throttle_if_needed(self, context: Context) -> dict:
+        async def throttle_if_needed(self, context) -> dict:
             return await BudgetGuardianAgent.throttle_if_needed(self, context)
 
         @hatchet_instance.task(execution_timeout="1m", retries=1)
-        async def alert(self, context: Context) -> dict:
+        async def alert(self, context) -> dict:
             return await BudgetGuardianAgent.alert(self, context)
 
     return _RegisteredBudgetGuardian
