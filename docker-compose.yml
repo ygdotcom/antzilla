@@ -114,6 +114,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/factory
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN}
       HATCHET_CLIENT_TLS_STRATEGY: none
     volumes:
       - hatchet_config:/hatchet/config
