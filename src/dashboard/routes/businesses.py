@@ -17,7 +17,8 @@ router = APIRouter(prefix="/business")
 async def _get_business_data(slug: str) -> dict | None:
     async with SessionLocal() as db:
         biz = (await db.execute(text(
-            "SELECT id, name, slug, domain, status, mrr, customers_count, kill_score, config, created_at "
+            "SELECT id, name, slug, domain, status, mrr, customers_count, kill_score, config, "
+            "github_repo, vercel_project_id, created_at "
             "FROM businesses WHERE slug = :slug"
         ), {"slug": slug})).fetchone()
 
@@ -62,6 +63,8 @@ async def _get_business_data(slug: str) -> dict | None:
         "business": {
             "id": biz.id, "name": biz.name, "slug": biz.slug,
             "domain": biz.domain, "status": biz.status,
+            "github_repo": getattr(biz, "github_repo", None),
+            "vercel_project_id": getattr(biz, "vercel_project_id", None),
             "mrr": float(biz.mrr or 0), "customers": biz.customers_count or 0,
             "kill_score": float(biz.kill_score) if biz.kill_score else None,
         },
