@@ -587,7 +587,19 @@ class Builder(BaseAgent):
         rls = context.step_output("verify_rls")
 
         code_output = code.get("code_output", {})
-        files = [f for f in code_output.get("files", []) if f.get("path") not in self.PROTECTED_TEMPLATE_FILES]
+        def _is_protected(path: str) -> bool:
+            if path in self.PROTECTED_TEMPLATE_FILES:
+                return True
+            # Also block by filename for critical files
+            protected_names = {"layout.tsx", "globals.css", "middleware.ts", "next.config.ts",
+                               "tailwind.config.ts", "tsconfig.json", "package.json"}
+            basename = path.rsplit("/", 1)[-1] if "/" in path else path
+            if basename in protected_names:
+                logger.info("protected_file_blocked", path=path, basename=basename)
+                return True
+            return False
+
+        files = [f for f in code_output.get("files", []) if not _is_protected(f.get("path", ""))]
         migrations = rls.get("fixed_migrations", [])
 
         import base64
