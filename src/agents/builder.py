@@ -94,11 +94,24 @@ COMPOSANTS UI DISPONIBLES (dans le template):
 - @/components/pricing-table → PricingTable
 - @/components/language-toggle → LanguageToggle
 
+FICHIERS INTERDITS À REMPLACER (le template les fournit déjà, NE PAS les inclure dans files[]):
+- src/app/[locale]/layout.tsx (le layout principal avec globals.css, next-intl, SchemaOrg)
+- src/app/globals.css (Tailwind base styles)
+- src/middleware.ts (i18n routing)
+- src/i18n/routing.ts, src/i18n/request.ts
+- src/lib/supabase/client.ts, src/lib/supabase/server.ts
+- src/lib/stripe.ts, src/lib/referral.ts
+- next.config.ts, tailwind.config.ts, tsconfig.json, postcss.config.mjs
+
+Tu peux AJOUTER de nouveaux fichiers (ex: src/app/[locale]/dashboard/receipts/page.tsx)
+et REMPLACER les pages template (ex: src/app/[locale]/page.tsx, src/app/[locale]/dashboard/page.tsx).
+
 INTERDIT:
 - N'importe AUCUN package qui n'est pas dans la liste ci-dessus
 - PAS de shadcn/ui install, PAS de @radix-ui (sauf react-progress déjà inclus)
 - PAS d'imports de composants qui n'existent pas dans le template
 - Utilise Tailwind CSS directement pour tout le styling
+- JAMAIS import './globals.css' — c'est déjà dans layout.tsx du template
 
 Produis un JSON avec les fichiers à modifier ou créer:
 {
@@ -496,6 +509,26 @@ class Builder(BaseAgent):
         logger.info("template_pushed", pushed=pushed, total=len(files_to_push))
         return {"pushed": pushed, "total": len(files_to_push)}
 
+    PROTECTED_TEMPLATE_FILES = {
+        "src/app/[locale]/layout.tsx",
+        "src/app/globals.css",
+        "src/middleware.ts",
+        "src/i18n/routing.ts",
+        "src/i18n/request.ts",
+        "src/lib/supabase/client.ts",
+        "src/lib/supabase/server.ts",
+        "src/lib/stripe.ts",
+        "src/lib/referral.ts",
+        "src/lib/utils.ts",
+        "next.config.ts",
+        "tailwind.config.ts",
+        "tsconfig.json",
+        "postcss.config.mjs",
+        "package.json",
+        ".gitignore",
+        ".env.example",
+    }
+
     async def push_to_github(self, context) -> dict:
         """Step 6: Push Claude-generated code on top of the template."""
         input_data = context.workflow_input()
@@ -509,7 +542,7 @@ class Builder(BaseAgent):
         rls = context.step_output("verify_rls")
 
         code_output = code.get("code_output", {})
-        files = code_output.get("files", [])
+        files = [f for f in code_output.get("files", []) if f.get("path") not in self.PROTECTED_TEMPLATE_FILES]
         migrations = rls.get("fixed_migrations", [])
 
         import base64
