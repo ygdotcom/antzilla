@@ -4,7 +4,50 @@
 
 {% block content %}
 <div class="space-y-8">
-  <h2 class="text-2xl font-semibold text-white">Ideas</h2>
+  <div class="flex items-center justify-between">
+    <h2 class="text-2xl font-semibold text-white">Ideas</h2>
+    <button onclick="document.getElementById('propose-modal').classList.toggle('hidden')" class="px-4 py-2 rounded-lg bg-brand hover:bg-brand/90 text-black text-sm font-semibold transition-colors">
+      + Propose an idea
+    </button>
+  </div>
+
+  <!-- Propose Idea Form -->
+  <div id="propose-modal" class="hidden bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+    <h3 class="text-lg font-semibold text-white mb-4">Propose a SaaS idea</h3>
+    <p class="text-zinc-400 text-sm mb-4">Claude will score it on 12 criteria and add it to your pipeline.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm text-zinc-400 mb-1">Idea name *</label>
+        <input id="prop-name" type="text" placeholder="e.g. Quote OS" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+      </div>
+      <div>
+        <label class="block text-sm text-zinc-400 mb-1">Niche *</label>
+        <input id="prop-niche" type="text" placeholder="e.g. construction quoting" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+      </div>
+      <div>
+        <label class="block text-sm text-zinc-400 mb-1">US equivalent</label>
+        <input id="prop-us" type="text" placeholder="e.g. Jobber" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+      </div>
+      <div>
+        <label class="block text-sm text-zinc-400 mb-1">US equivalent URL</label>
+        <input id="prop-url" type="text" placeholder="https://getjobber.com" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm">
+      </div>
+    </div>
+    <div class="mb-4">
+      <label class="block text-sm text-zinc-400 mb-1">Description (optional)</label>
+      <textarea id="prop-desc" rows="3" placeholder="What does it do? Who's the target customer? Why doesn't it exist in Canada?" class="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm"></textarea>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="proposeIdea()" id="propose-btn" class="px-4 py-2 rounded-lg bg-brand hover:bg-brand/90 text-black text-sm font-semibold transition-colors">
+        Score & Add
+      </button>
+      <button onclick="document.getElementById('propose-modal').classList.add('hidden')" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm text-zinc-300 transition-colors">
+        Cancel
+      </button>
+      <span id="propose-status" class="text-sm"></span>
+    </div>
+    <div id="propose-result" class="mt-4"></div>
+  </div>
 
   <!-- Quick stats -->
   {% set total = ideas|default([])|length %}
@@ -120,4 +163,40 @@
     </div>
   </section>
 </div>
+<script>
+async function proposeIdea() {
+  const name = document.getElementById('prop-name').value.trim();
+  const niche = document.getElementById('prop-niche').value.trim();
+  if (!name || !niche) {
+    document.getElementById('propose-status').innerHTML = '<span class="text-red-400">Name and niche are required</span>';
+    return;
+  }
+  const btn = document.getElementById('propose-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scoring with Claude...';
+  document.getElementById('propose-status').innerHTML = '<span class="text-zinc-400">This takes ~10 seconds...</span>';
+  try {
+    const res = await fetch('/ideas/propose', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name,
+        niche,
+        us_equivalent: document.getElementById('prop-us').value.trim(),
+        us_equivalent_url: document.getElementById('prop-url').value.trim(),
+        description: document.getElementById('prop-desc').value.trim(),
+      })
+    });
+    document.getElementById('propose-result').innerHTML = await res.text();
+    document.getElementById('propose-status').innerHTML = '';
+    if (res.ok) {
+      setTimeout(() => location.reload(), 2000);
+    }
+  } catch (e) {
+    document.getElementById('propose-status').innerHTML = '<span class="text-red-400">Failed: ' + e.message + '</span>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Score & Add';
+}
+</script>
 {% endblock %}
