@@ -95,9 +95,22 @@ app.include_router(leads.router)
 app.include_router(secrets_api.router)
 
 
-@app.get("/businesses")
-async def businesses_list(user: str = Depends(verify_credentials)):
-    return RedirectResponse("/", status_code=302)
+@app.get("/businesses", response_class=HTMLResponse)
+async def businesses_list(request: Request, user: str = Depends(verify_credentials)):
+    from sqlalchemy import text as sa_text
+    from src.db import SessionLocal
+    async with SessionLocal() as db:
+        rows = (await db.execute(sa_text(
+            "SELECT id, name, slug, status, mrr, customers_count, kill_score, domain "
+            "FROM businesses ORDER BY mrr DESC NULLS LAST"
+        ))).fetchall()
+    businesses = [
+        {"id": r.id, "name": r.name, "slug": r.slug, "status": r.status,
+         "mrr": float(r.mrr or 0), "customers": r.customers_count or 0,
+         "kill_score": float(r.kill_score) if r.kill_score else None, "domain": r.domain}
+        for r in rows
+    ]
+    return templates.TemplateResponse("businesses_list.html", {"request": request, "businesses": businesses})
 
 
 def start():
