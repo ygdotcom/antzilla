@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
+import { GoogleAnalytics } from '@/components/google-analytics';
 import { PlausibleAnalytics } from '@/components/plausible';
 import { SchemaOrg } from '@/components/schema-org';
 import '@/app/globals.css';
@@ -57,6 +58,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider messages={messages}>
           {children}
         </NextIntlClientProvider>
+        <GoogleAnalytics />
         <PlausibleAnalytics />
       </body>
     </html>
