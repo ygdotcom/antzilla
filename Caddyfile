@@ -1,0 +1,54 @@
+# Caddy reverse proxy — automatic HTTPS for all factory services.
+# Uses self-signed certs for IP access, or Let's Encrypt with a domain.
+
+{
+	# Accept the self-signed cert warning for IP-based HTTPS
+	auto_https disable_redirects
+}
+
+:443 {
+	tls internal
+
+	# CEO Dashboard
+	handle /login* {
+		reverse_proxy dashboard:9000
+	}
+	handle /logout* {
+		reverse_proxy dashboard:9000
+	}
+	handle /setup* {
+		reverse_proxy dashboard:9000
+	}
+	handle /api/* {
+		reverse_proxy dashboard:9000
+	}
+	handle /settings* {
+		reverse_proxy dashboard:9000
+	}
+	handle /static/* {
+		reverse_proxy dashboard:9000
+	}
+	handle {
+		reverse_proxy dashboard:9000
+	}
+}
+
+:8443 {
+	tls internal
+	reverse_proxy hatchet-dashboard:80
+}
+
+:8444 {
+	tls internal
+	reverse_proxy plausible:8000
+}
+
+:3002 {
+	tls internal
+	reverse_proxy uptime-kuma:3001
+}
+
+# HTTP → HTTPS redirect
+:80 {
+	redir https://{host}{uri} permanent
+}
