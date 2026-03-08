@@ -180,17 +180,20 @@ class TestExecuteDecisions:
             }[name]
         )
 
-        mock_admin = AsyncMock()
-        mock_admin.run_workflow = AsyncMock()
+        mock_db = AsyncMock()
+        mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db.__aexit__ = AsyncMock(return_value=False)
+        mock_db.execute = AsyncMock()
+        mock_db.commit = AsyncMock()
 
         with (
             patch.object(orchestrator, "log_execution", new_callable=AsyncMock),
             patch("src.agents.meta_orchestrator._send_slack_digest", new_callable=AsyncMock),
+            patch("src.agents.meta_orchestrator.SessionLocal", return_value=mock_db),
         ):
-            result = await orchestrator.execute_decisions(ctx, _hatchet_admin=mock_admin)
+            result = await orchestrator.execute_decisions(ctx)
 
         assert "idea-factory" in result["triggered_agents"]
-        mock_admin.run_workflow.assert_called_once_with("idea-factory", {})
 
     @pytest.mark.asyncio
     async def test_handles_trigger_failure_gracefully(self, orchestrator, populated_metrics, valid_decisions):
@@ -202,30 +205,15 @@ class TestExecuteDecisions:
             }[name]
         )
 
-        mock_admin = AsyncMock()
-        mock_admin.run_workflow = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_db = AsyncMock()
+        mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db.__aexit__ = AsyncMock(return_value=False)
+        mock_db.execute = AsyncMock(side_effect=Exception("Connection refused"))
 
         with (
             patch.object(orchestrator, "log_execution", new_callable=AsyncMock),
             patch("src.agents.meta_orchestrator._send_slack_digest", new_callable=AsyncMock),
-        ):
-            result = await orchestrator.execute_decisions(ctx, _hatchet_admin=mock_admin)
-
-        assert result["triggered_agents"] == []
-
-    @pytest.mark.asyncio
-    async def test_no_admin_skips_triggers(self, orchestrator, populated_metrics, valid_decisions):
-        ctx = MagicMock()
-        ctx.step_output = MagicMock(
-            side_effect=lambda name: {
-                "analyze_and_decide": {"decisions": valid_decisions, "cost_usd": 0.05},
-                "gather_all_metrics": populated_metrics,
-            }[name]
-        )
-
-        with (
-            patch.object(orchestrator, "log_execution", new_callable=AsyncMock),
-            patch("src.agents.meta_orchestrator._send_slack_digest", new_callable=AsyncMock),
+            patch("src.agents.meta_orchestrator.SessionLocal", return_value=mock_db),
         ):
             result = await orchestrator.execute_decisions(ctx)
 
@@ -297,13 +285,17 @@ class TestDayZeroScenario:
             }[name]
         )
 
-        mock_admin = AsyncMock()
-        mock_admin.run_workflow = AsyncMock()
+        mock_db = AsyncMock()
+        mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db.__aexit__ = AsyncMock(return_value=False)
+        mock_db.execute = AsyncMock()
+        mock_db.commit = AsyncMock()
 
         with (
             patch.object(orchestrator, "log_execution", new_callable=AsyncMock),
             patch("src.agents.meta_orchestrator._send_slack_digest", new_callable=AsyncMock),
+            patch("src.agents.meta_orchestrator.SessionLocal", return_value=mock_db),
         ):
-            result = await orchestrator.execute_decisions(ctx, _hatchet_admin=mock_admin)
+            result = await orchestrator.execute_decisions(ctx)
 
         assert "idea-factory" in result["triggered_agents"]

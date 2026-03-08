@@ -357,36 +357,73 @@ class IdeaFactory(BaseAgent):
             for i in top_3
         ]
 
-        # Auto-run Deep Scout on top ideas and create approval notifications
+        # Auto-run Deep Scout on qualified ideas
         for idea, idea_id in zip(qualified, saved_ids):
             score = idea.get("score", 0)
-            if score >= 8.0:
-                # High-confidence idea — auto-validate and notify for approval
+            if score >= 7.0:
                 async with SessionLocal() as db:
-                    await db.execute(
-                        text("UPDATE ideas SET status = 'validated', updated_at = NOW() WHERE id = :id"),
-                        {"id": idea_id},
-                    )
                     await db.execute(
                         text(
                             "INSERT INTO agent_logs (agent_name, action, result, status) "
                             "VALUES ('idea_factory', :action, :result, 'success')"
                         ),
                         {
-                            "action": f"auto_validated: {idea.get('name')} (score {score})",
-                            "result": json.dumps({"idea_id": idea_id, "score": score, "auto": True}),
+                            "action": f"triggering_deep_scout: {idea.get('name')} (score {score})",
+                            "result": json.dumps({"idea_id": idea_id, "score": score}),
                         },
                     )
-                    # Create notification for CEO approval
-                    await db.execute(
-                        text(
-                            "INSERT INTO workflow_triggers (workflow_name, status, triggered_by) "
-                            "VALUES (:wf, 'pending', 'idea_factory')"
-                        ),
-                        {"wf": f"approve_idea_{idea_id}:{idea.get('name', '')}"},
-                    )
                     await db.commit()
-                logger.info("idea_auto_validated", name=idea.get("name"), score=score, idea_id=idea_id)
+                logger.info("triggering_deep_scout", name=idea.get("name"), score=score, idea_id=idea_id)
+
+                # Run Deep Scout inline (same process, no Hatchet dependency)
+                try:
+                    from src.agents.deep_scout import DeepScout
+
+                    class _ScoutContext:
+                        def __init__(self, iid, name, niche, us_eq, us_url):
+                            self._input = {"idea_id": iid, "idea_name": name, "niche": niche,
+                                           "us_equivalent": us_eq, "us_equivalent_url": us_url}
+                            self._outputs = {}
+                        def workflow_input(self):
+                            return self._input
+                        def step_output(self, name):
+                            return self._outputs.get(name, {})
+
+                    scout = DeepScout()
+                    ctx = _ScoutContext(
+                        idea_id, idea.get("name", ""), idea.get("niche", ""),
+                        idea.get("us_equivalent", ""), idea.get("us_equivalent_url", ""),
+                    )
+                    for step_name, step_fn in [
+                        ("research_market", scout.research_market),
+                        ("analyze_us_competitor", scout.analyze_us_competitor),
+                        ("discover_channels", scout.discover_channels),
+                        ("research_regulations", scout.research_regulations),
+                        ("generate_gtm_playbook", scout.generate_gtm_playbook),
+                        ("save_and_recommend", scout.save_and_recommend),
+                    ]:
+                        logger.info("deep_scout_step", step=step_name, idea=idea.get("name"))
+                        result = await step_fn(ctx)
+                        ctx._outputs[step_name] = result if isinstance(result, dict) else {}
+
+                    go_nogo = ctx._outputs.get("save_and_recommend", {}).get("go_nogo", "nogo")
+                    if go_nogo == "go":
+                        # Deep Scout says GO — notify CEO for approval
+                        async with SessionLocal() as db:
+                            await db.execute(text(
+                                "INSERT INTO agent_logs (agent_name, action, result, status) "
+                                "VALUES ('deep_scout', :action, :result, 'success')"
+                            ), {
+                                "action": f"GO recommendation: {idea.get('name')}",
+                                "result": json.dumps({"idea_id": idea_id, "go_nogo": "go"}),
+                            })
+                            await db.commit()
+                        logger.info("deep_scout_go", name=idea.get("name"), idea_id=idea_id)
+                    else:
+                        logger.info("deep_scout_nogo", name=idea.get("name"), idea_id=idea_id)
+
+                except Exception as scout_exc:
+                    logger.error("deep_scout_failed", idea_id=idea_id, error=str(scout_exc))
 
         await self.log_execution(
             action="save_and_notify",

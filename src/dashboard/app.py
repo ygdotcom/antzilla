@@ -105,6 +105,10 @@ AGENT_RUNNERS = {
     "self-reflection": ("src.agents.self_reflection", "SelfReflectionAgent", [
         "gather_data", "analyze", "categorize_findings", "save_improvements", "send_report"
     ]),
+    "deep-scout": ("src.agents.deep_scout", "DeepScout", [
+        "research_market", "analyze_us_competitor", "discover_channels",
+        "research_regulations", "generate_gtm_playbook", "save_and_recommend"
+    ]),
     "brand-designer": ("src.agents.brand_designer", "BrandDesigner", [
         "quick_brand"
     ]),

@@ -304,31 +304,41 @@ class MetaOrchestrator(BaseAgent):
 
         return {"decisions": decisions, "cost_usd": cost}
 
-    async def execute_decisions(self, context, *, _hatchet_admin=None) -> dict:
-        """Trigger agents, send Slack digest, log everything.
-
-        _hatchet_admin is injectable for tests; in production the registered
-        workflow passes the real hatchet admin client.
-        """
+    async def execute_decisions(self, context) -> dict:
+        """Trigger agents via workflow_triggers table, send Slack digest."""
         analysis = context.step_output("analyze_and_decide")
         metrics = context.step_output("gather_all_metrics")
         decisions = analysis["decisions"]
-
-        admin = _hatchet_admin
 
         triggered = []
         for trigger in decisions.get("agent_triggers", []):
             workflow_name = trigger.get("agent")
             workflow_input = trigger.get("input", {})
+            reason = trigger.get("reason", "")
             if not workflow_name:
                 continue
-            if admin is None:
-                logger.warning("no_hatchet_admin", workflow=workflow_name)
-                continue
             try:
-                await admin.run_workflow(workflow_name, workflow_input)
+                async with SessionLocal() as db:
+                    await db.execute(
+                        text(
+                            "INSERT INTO workflow_triggers (workflow_name, status, triggered_by) "
+                            "VALUES (:wf, 'pending', 'meta_orchestrator')"
+                        ),
+                        {"wf": workflow_name},
+                    )
+                    await db.execute(
+                        text(
+                            "INSERT INTO agent_logs (agent_name, action, result, status) "
+                            "VALUES ('meta_orchestrator', :action, :result, 'success')"
+                        ),
+                        {
+                            "action": f"trigger_agent: {workflow_name}",
+                            "result": json.dumps({"workflow": workflow_name, "reason": reason, "input": workflow_input}),
+                        },
+                    )
+                    await db.commit()
                 triggered.append(workflow_name)
-                logger.info("agent_triggered", workflow=workflow_name, reason=trigger.get("reason"))
+                logger.info("agent_triggered", workflow=workflow_name, reason=reason)
             except Exception as exc:
                 logger.error("agent_trigger_failed", workflow=workflow_name, error=str(exc))
 
