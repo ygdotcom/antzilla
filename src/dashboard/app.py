@@ -98,7 +98,7 @@ app.include_router(secrets_api.router)
 
 AGENT_RUNNERS = {
     "idea-factory": ("src.agents.idea_factory", "IdeaFactory", [
-        "scrape_sources", "filter_canadian_gap", "score_ideas", "save_and_notify"
+        "scrape_sources", "filter_canadian_gap", "score_ideas", "filter_complexity", "save_and_notify"
     ]),
     "self-reflection": ("src.agents.self_reflection", "SelfReflectionAgent", [
         "gather_data", "analyze", "categorize_findings", "save_improvements", "send_report"

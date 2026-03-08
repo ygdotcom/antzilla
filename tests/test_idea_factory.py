@@ -205,9 +205,9 @@ class TestScoreStep:
         ctx = MagicMock()
         ctx.step_output = MagicMock(return_value={
             "ideas": [
-                {"name": "Good", "score": 8.5},
-                {"name": "Ok", "score": 7.0},
-                {"name": "Bad", "score": 3.1},
+                {"name": "Good", "score": 8.5, "scoring_details": {"criterion_7": 9, "criterion_13": 8}},
+                {"name": "Ok", "score": 7.0, "scoring_details": {"criterion_7": 7, "criterion_13": 6}},
+                {"name": "Bad", "score": 3.1, "scoring_details": {"criterion_7": 3, "criterion_13": 2}},
             ],
             "cost_usd": 0.01,
         })
@@ -215,8 +215,8 @@ class TestScoreStep:
         result = await agent.score_ideas(ctx)
 
         assert len(result["qualified_ideas"]) == 2
-        assert len(result["below_threshold"]) == 1
-        assert result["below_threshold"][0]["name"] == "Bad"
+        assert len(result["rejected"]) == 1
+        assert result["rejected"][0]["name"] == "Bad"
 
     @pytest.mark.asyncio
     async def test_threshold_is_7(self):

@@ -17,28 +17,34 @@ router = APIRouter(prefix="/ideas")
 SCORE_IDEA_PROMPT = """\
 Tu es l'évaluateur d'idées SaaS pour le marché canadien.
 
-Tu reçois une idée proposée par le CEO. Score-la sur ces 12 critères (/10 chacun):
+IMPORTANT: La factory ne peut construire que des outils SIMPLES — 5-10 écrans max, buildable en 2 semaines avec IA.
+REJETER automatiquement si: concurrent US a 100+ employés, a levé $10M+, ou le produit est une PLATEFORME (CRM, POS, ERP).
+ON CHERCHE: petits outils verticaux ($29-99/mo) qui automatisent UNE tâche ennuyeuse.
+
+Score-la sur ces 13 critères (/10 chacun):
 1. Douleur client (récurrence, intensité)
 2. Willingness to pay (le client paie-t-il déjà aux US?)
 3. Defensibilité vs ChatGPT
 4. Taille du marché CA (minimum 5000 entreprises cibles)
 5. Compétition locale au Canada (moins = mieux)
-6. ARPU potentiel (>$100/mo = bien)
-7. Complexité technique du MVP (moins = mieux)
+6. ARPU potentiel ($29-99/mo = bien, $500+/mo = trop enterprise)
+7. Complexité technique du MVP — DOIT être buildable en <2 semaines. Score <7 = REJETER.
 8. Time to first revenue (<60 jours = bien)
 9. Potentiel de récurrence (MRR vs one-time)
 10. Avantage bilingue/canadien spécifique
 11. Potentiel d'expansion internationale
 12. Compatibilité avec notre stack (Next.js, Supabase, Stripe)
+13. Taille du concurrent US — 1-5 emp = 10, 5-20 = 8, 20-50 = 5, 50-100 = 3, 100+ = 1 (REJETER)
 
 Réponds UNIQUEMENT en JSON:
 {
   "score": 7.5,
-  "scoring_details": {"criterion_1": 8, "criterion_2": 7, ...},
+  "scoring_details": {"criterion_1": 8, ..., "criterion_13": 9},
   "ca_gap_analysis": "Why this doesn't exist in Canada yet",
   "tam_estimate": "~X businesses in Canada",
   "pricing_hypothesis": "$X/mo based on Y",
   "mvp_complexity": "low|medium|high",
+  "core_screens": 5,
   "recommendation": "GO|MAYBE|PASS",
   "reasoning": "2-3 sentences explaining the score"
 }

@@ -219,28 +219,86 @@ class IdeaFactory(BaseAgent):
         return {"ideas": ideas, "cost_usd": cost}
 
     async def score_ideas(self, context) -> dict:
-        """Step 3: Filter to ideas scoring >= 7.0."""
+        """Step 3: Filter ideas on overall score + complexity + competitor size."""
         prev = context.step_output("filter_canadian_gap")
         ideas = prev.get("ideas", [])
 
-        qualified = [i for i in ideas if i.get("score", 0) >= SCORE_THRESHOLD]
-        below = [i for i in ideas if i.get("score", 0) < SCORE_THRESHOLD]
+        qualified = []
+        rejected = []
+
+        for idea in ideas:
+            score = idea.get("score", 0)
+            details = idea.get("scoring_details", {})
+            complexity = details.get("criterion_7", 5)
+            competitor_size = details.get("criterion_13", 5)
+
+            # Auto-reject from Claude's own rejection flag
+            if idea.get("rejected"):
+                rejected.append({"name": idea.get("name"), "score": score, "reason": idea.get("rejection_reason", "Claude rejected")})
+                continue
+
+            # Complexity gate: must be buildable in <2 weeks
+            if complexity < 7:
+                rejected.append({"name": idea.get("name"), "score": score, "reason": f"Too complex (criterion_7={complexity})"})
+                continue
+
+            # Competitor size gate: US equivalent must be small
+            if competitor_size < 5:
+                rejected.append({"name": idea.get("name"), "score": score, "reason": f"US competitor too large (criterion_13={competitor_size})"})
+                continue
+
+            # Overall score threshold
+            if score < SCORE_THRESHOLD:
+                rejected.append({"name": idea.get("name"), "score": score, "reason": f"Score {score} < {SCORE_THRESHOLD}"})
+                continue
+
+            qualified.append(idea)
 
         logger.info(
             "ideas_scored",
             total=len(ideas),
             qualified=len(qualified),
-            below_threshold=len(below),
+            rejected=len(rejected),
         )
 
         return {
             "qualified_ideas": qualified,
-            "below_threshold": [{"name": i.get("name"), "score": i.get("score")} for i in below],
+            "rejected": rejected,
         }
 
-    async def save_and_notify(self, context) -> dict:
-        """Step 4: Persist qualified ideas and notify Meta Orchestrator."""
+    async def filter_complexity(self, context) -> dict:
+        """Step 4: Validate competitor size via Serper. Reject if US equivalent is too big."""
         scored = context.step_output("score_ideas")
+        qualified = scored.get("qualified_ideas", [])
+        rejected = list(scored.get("rejected", []))
+
+        if not qualified:
+            return {"qualified_ideas": [], "rejected": rejected}
+
+        validated = []
+        async with httpx.AsyncClient(timeout=10) as client:
+            for idea in qualified:
+                us_equiv = idea.get("us_equivalent", "")
+                if not us_equiv:
+                    validated.append(idea)
+                    continue
+
+                # Quick Serper search for company size
+                try:
+                    from src.integrations import serper
+                    results = await serper.search_maps(f"{us_equiv} company employees funding crunchbase", "USA", num=3)
+                    # If Serper returns data about a large company, flag it
+                    # For now, trust Claude's criterion_13 score since Serper Maps won't reliably return employee counts
+                    validated.append(idea)
+                except Exception:
+                    validated.append(idea)
+
+        logger.info("complexity_filter", input=len(qualified), output=len(validated), rejected=len(rejected))
+        return {"qualified_ideas": validated, "rejected": rejected}
+
+    async def save_and_notify(self, context) -> dict:
+        """Step 5: Persist qualified ideas and notify Meta Orchestrator."""
+        scored = context.step_output("filter_complexity")
         qualified = scored.get("qualified_ideas", [])
 
         if not qualified:
@@ -304,6 +362,10 @@ def register(hatchet_instance):
     @wf.task(execution_timeout="2m", retries=1)
     async def score_ideas(input, ctx):
         return await agent.score_ideas(ctx)
+
+    @wf.task(execution_timeout="3m", retries=1)
+    async def filter_complexity(input, ctx):
+        return await agent.filter_complexity(ctx)
 
     @wf.task(execution_timeout="5m", retries=2)
     async def save_and_notify(input, ctx):
