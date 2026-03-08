@@ -132,8 +132,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://factory:${POSTGRES_PASSWORD:-changeme}@postgres:5432/factory
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      DASHBOARD_USER: ${DASHBOARD_USER:-admin}
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-factory}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
     volumes:
       - ./src:/app/src
 

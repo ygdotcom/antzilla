@@ -15,7 +15,7 @@ dependencies = [
     # Config + crypto + auth
     "pydantic",
     "cryptography",
-    "bcrypt",
+    "supabase",
     # HTTP
     "httpx",
     # Integrations

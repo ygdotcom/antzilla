@@ -29,7 +29,8 @@ def client():
 def _login(client) -> dict:
     """Log in and return cookies dict for authenticated requests."""
     os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
-    resp = client.post("/login", data={"username": "admin", "password": "factory"}, follow_redirects=False)
+    with patch("src.dashboard.app.check_password", return_value={"username": "test@test.com", "role": "admin"}):
+        resp = client.post("/login", data={"username": "test@test.com", "password": "test"}, follow_redirects=False)
     return dict(resp.cookies)
 
 
@@ -59,13 +60,15 @@ class TestAuth:
         assert "Sign in" in resp.text
 
     def test_bad_login_shows_error(self, client):
-        resp = client.post("/login", data={"username": "wrong", "password": "wrong"})
+        with patch("src.dashboard.app.check_password", return_value=None):
+            resp = client.post("/login", data={"username": "wrong", "password": "wrong"})
         assert resp.status_code == 401
         assert "Invalid" in resp.text
 
     def test_good_login_sets_cookie(self, client):
         os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
-        resp = client.post("/login", data={"username": "admin", "password": "factory"}, follow_redirects=False)
+        with patch("src.dashboard.app.check_password", return_value={"username": "test@test.com", "role": "admin"}):
+            resp = client.post("/login", data={"username": "test@test.com", "password": "test"}, follow_redirects=False)
         assert resp.status_code == 303
         assert "factory_session" in resp.cookies
 

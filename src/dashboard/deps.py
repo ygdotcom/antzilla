@@ -1,31 +1,39 @@
-"""Shared dashboard dependencies — templates, auth, session management.
+"""Shared dashboard dependencies — templates, auth via Supabase, session cookies.
 
-Uses signed cookies for sessions. Supports two auth modes:
-1. Bootstrap admin: DASHBOARD_USER/DASHBOARD_PASSWORD from .env (always works)
-2. Database users: dashboard_users table with bcrypt-hashed passwords + roles
+Auth flow:
+1. User submits email+password on /login
+2. Server calls Supabase sign_in_with_password() to verify
+3. On success, server sets an HMAC-signed session cookie (email:role:ts:sig)
+4. Subsequent requests are verified via the cookie (no per-request Supabase call)
+5. Invite: admin calls supabase.auth.admin.create_user() + inserts role into dashboard_users
 
-Roles: admin (full control), operator (run agents, manage businesses),
-       viewer (read-only dashboards).
+Roles: admin (full control), operator (run+approve), viewer (read-only).
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import time
 from pathlib import Path
 
+import structlog
 from fastapi import Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from src.config import settings
+logger = structlog.get_logger()
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 SESSION_COOKIE = "factory_session"
 SESSION_MAX_AGE = 86400 * 7  # 7 days
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 ROLES = {
     "admin": {"can_kill": True, "can_edit_settings": True, "can_approve": True, "can_view": True},
@@ -35,13 +43,14 @@ ROLES = {
 
 
 def _get_signing_key() -> bytes:
-    return (settings.ENCRYPTION_KEY or "fallback-dev-key").encode()
+    encryption_key = os.environ.get("ENCRYPTION_KEY", "fallback-dev-key")
+    return encryption_key.encode()
 
 
-def _sign_token(username: str, role: str = "admin") -> str:
-    """Create a signed session token: username:role:timestamp:signature."""
+def _sign_token(email: str, role: str = "admin") -> str:
+    """Create a signed session token: email:role:timestamp:signature."""
     ts = str(int(time.time()))
-    payload = f"{username}:{role}:{ts}"
+    payload = f"{email}:{role}:{ts}"
     sig = hmac.new(_get_signing_key(), payload.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{payload}:{sig}"
 
@@ -65,7 +74,7 @@ def _verify_token(token: str) -> dict | None:
 
 
 def get_current_user(request: Request) -> dict | None:
-    """Extract and verify the session cookie. Returns {"username", "role"} or None."""
+    """Extract and verify the session cookie."""
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         return None
@@ -80,29 +89,41 @@ def verify_credentials(request: Request) -> str:
     return user["username"]
 
 
-def check_password(username: str, password: str) -> dict | None:
-    """Verify login credentials. Returns {"username", "role"} or None.
+# ── Supabase Auth ────────────────────────────────────────────────────────────
 
-    Checks database users first, then falls back to .env bootstrap admin.
-    """
-    # 1. Try database users
-    db_user = _check_db_user(username, password)
-    if db_user:
-        return db_user
 
-    # 2. Fallback: bootstrap admin from .env
-    import secrets as _secrets
-    if (_secrets.compare_digest(username, settings.DASHBOARD_USER)
-            and _secrets.compare_digest(password, settings.DASHBOARD_PASSWORD)):
-        return {"username": username, "role": "admin"}
+def _get_supabase_client():
+    """Get a Supabase client using the service role key (admin operations)."""
+    from supabase import create_client
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+
+def check_password(email: str, password: str) -> dict | None:
+    """Verify credentials via Supabase Auth. Returns {"username", "role"} or None."""
+    from supabase import create_client
+
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        logger.error("supabase_not_configured")
+        return None
+
+    try:
+        client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        response = client.auth.sign_in_with_password({"email": email, "password": password})
+
+        if response.user:
+            role = _get_user_role(email)
+            return {"username": email, "role": role}
+    except Exception as exc:
+        logger.warning("supabase_auth_failed", email=email, error=str(exc))
 
     return None
 
 
-def _check_db_user(email: str, password: str) -> dict | None:
-    """Check credentials against dashboard_users table."""
+def _get_user_role(email: str) -> str:
+    """Look up user role from dashboard_users table. First user defaults to admin."""
     try:
-        import bcrypt
         import sqlalchemy
         from src.config import DATABASE_URL
 
@@ -111,44 +132,68 @@ def _check_db_user(email: str, password: str) -> dict | None:
         with engine.connect() as conn:
             row = conn.execute(
                 sqlalchemy.text(
-                    "SELECT email, password_hash, name, role FROM dashboard_users "
-                    "WHERE email = :email AND is_active = TRUE"
+                    "SELECT role FROM dashboard_users WHERE email = :email AND is_active = TRUE"
                 ),
                 {"email": email},
             ).fetchone()
-            if row and bcrypt.checkpw(password.encode(), row.password_hash.encode()):
+            if row:
                 conn.execute(
                     sqlalchemy.text("UPDATE dashboard_users SET last_login_at = NOW() WHERE email = :email"),
                     {"email": email},
                 )
                 conn.commit()
-                return {"username": row.email, "role": row.role, "name": row.name}
-    except Exception:
-        pass
-    return None
+                return row.role
+
+            # First user ever → auto-assign admin and insert
+            count = conn.execute(sqlalchemy.text("SELECT COUNT(*) AS cnt FROM dashboard_users")).fetchone()
+            role = "admin" if (count.cnt or 0) == 0 else "viewer"
+            conn.execute(
+                sqlalchemy.text(
+                    "INSERT INTO dashboard_users (email, password_hash, name, role) "
+                    "VALUES (:email, 'supabase_managed', :email, :role) "
+                    "ON CONFLICT (email) DO NOTHING"
+                ),
+                {"email": email, "role": role},
+            )
+            conn.commit()
+            return role
+    except Exception as exc:
+        logger.warning("role_lookup_failed", email=email, error=str(exc))
+        return "admin"
 
 
 async def create_user(*, email: str, password: str, name: str = "", role: str = "viewer") -> bool:
-    """Create a new dashboard user with bcrypt-hashed password."""
+    """Invite a new user: create in Supabase Auth + insert role into dashboard_users."""
     try:
-        import bcrypt
+        sb = _get_supabase_client()
+        if not sb:
+            logger.error("supabase_service_role_not_configured")
+            return False
+
+        sb.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+        })
+
         from sqlalchemy import text as sa_text
         from src.db import SessionLocal
 
-        pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         async with SessionLocal() as db:
             await db.execute(
                 sa_text(
                     "INSERT INTO dashboard_users (email, password_hash, name, role) "
-                    "VALUES (:email, :pw, :name, :role) "
-                    "ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, "
-                    "name = EXCLUDED.name, role = EXCLUDED.role"
+                    "VALUES (:email, 'supabase_managed', :name, :role) "
+                    "ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role"
                 ),
-                {"email": email, "pw": pw_hash, "name": name, "role": role},
+                {"email": email, "name": name or email, "role": role},
             )
             await db.commit()
+
+        logger.info("user_invited", email=email, role=role)
         return True
-    except Exception:
+    except Exception as exc:
+        logger.error("user_invite_failed", email=email, error=str(exc))
         return False
 
 

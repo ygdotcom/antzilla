@@ -25,8 +25,6 @@ DATABASE_URL = os.environ.get(
 )
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "changeme")
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "")
-DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "admin")
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "factory")
 DAILY_BUDGET_LIMIT_USD = float(os.environ.get("DAILY_BUDGET_LIMIT_USD", "50.0"))
 AGENT_DEFAULT_DAILY_LIMIT_USD = float(os.environ.get("AGENT_DEFAULT_DAILY_LIMIT_USD", "5.0"))
 
@@ -103,14 +101,6 @@ class Settings:
     @property
     def ENCRYPTION_KEY(self) -> str:
         return ENCRYPTION_KEY
-
-    @property
-    def DASHBOARD_USER(self) -> str:
-        return DASHBOARD_USER
-
-    @property
-    def DASHBOARD_PASSWORD(self) -> str:
-        return DASHBOARD_PASSWORD
 
     @property
     def DAILY_BUDGET_LIMIT_USD(self) -> float:

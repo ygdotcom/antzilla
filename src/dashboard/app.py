@@ -1,8 +1,7 @@
 """CEO Dashboard — FastAPI + HTMX + Tailwind.
 
-The only human interface to the factory. Everything else is autonomous.
-Vercel-inspired dark design. Session-based auth with signed cookies.
-First boot: redirects to /setup wizard if no secrets configured.
+Auth via Supabase (email/password). Session stored in HMAC-signed cookie.
+First boot: /login → /setup wizard if no secrets configured.
 """
 
 from __future__ import annotations
@@ -40,16 +39,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
 
-        # Public paths — no auth needed
         if path.startswith(("/login", "/static")):
             return await call_next(request)
 
-        # Everything else requires login
         user = get_current_user(request)
         if not user:
             return RedirectResponse("/login", status_code=302)
 
-        # After auth: redirect to /setup if factory not configured yet
         if not path.startswith(("/setup", "/api/secrets", "/logout")):
             try:
                 if not settings.is_setup_complete():
@@ -61,9 +57,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
-
-
-# ── Login / Logout ───────────────────────────────────────────────────────────
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -80,17 +73,11 @@ async def login_submit(request: Request, username: str = Form(...), password: st
     if user_info:
         token = _sign_token(user_info["username"], user_info.get("role", "admin"))
         response = RedirectResponse("/", status_code=303)
-        response.set_cookie(
-            SESSION_COOKIE,
-            token,
-            httponly=True,
-            samesite="lax",
-            max_age=86400 * 7,
-        )
+        response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=86400 * 7)
         return response
     return templates.TemplateResponse(
         "login.html",
-        {"request": request, "error": "Invalid username or password."},
+        {"request": request, "error": "Invalid email or password."},
         status_code=401,
     )
 
@@ -101,8 +88,6 @@ async def logout():
     response.delete_cookie(SESSION_COOKIE)
     return response
 
-
-# ── Route modules ────────────────────────────────────────────────────────────
 
 from src.dashboard.routes import overview, businesses, agents, budget, decisions, ideas, knowledge, leads, secrets_api
 
@@ -124,7 +109,6 @@ async def businesses_list(user: str = Depends(verify_credentials)):
 
 def start():
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=9000)
 
 

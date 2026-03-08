@@ -115,8 +115,12 @@ def client():
 
 @pytest.fixture
 def auth_cookies(client):
-    import os; os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
-    resp = client.post("/login", data={"username": "admin", "password": "factory"}, follow_redirects=False); return dict(resp.cookies)
+    import os
+    from unittest.mock import patch
+    os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
+    with patch("src.dashboard.app.check_password", return_value={"username": "test@test.com", "role": "admin"}):
+        resp = client.post("/login", data={"username": "test@test.com", "password": "test"}, follow_redirects=False)
+    return dict(resp.cookies)
 
 
 class TestSecretsSchema:
@@ -155,12 +159,12 @@ class TestSetupWizard:
 
 
 class TestSettingsPage:
-    def test_settings_page_loads(self, client):
+    def test_settings_page_loads(self, client, auth_cookies):
         with (
             patch("src.config.Settings.is_setup_complete", return_value=True),
             patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}),
         ):
-            resp = client.get("/settings", )
+            resp = client.get("/settings", cookies=auth_cookies)
         assert resp.status_code == 200
 
 
@@ -218,12 +222,12 @@ class TestSetupRedirect:
         assert resp.status_code == 302
         assert "/setup" in resp.headers.get("location", "")
 
-    def test_setup_does_not_redirect(self, client):
+    def test_setup_does_not_redirect(self, client, auth_cookies):
         with (
             patch("src.config.Settings.is_setup_complete", return_value=False),
             patch("src.dashboard.routes.secrets_api._get_configured_keys", new_callable=AsyncMock, return_value={}),
         ):
-            resp = client.get("/setup", )
+            resp = client.get("/setup", cookies=auth_cookies)
         assert resp.status_code == 200
 
 
