@@ -64,8 +64,15 @@ async def ideas_page(
     params: dict = {}
 
     if status:
-        conditions.append("status = :status")
-        params["status"] = status
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            conditions.append("status = :status")
+            params["status"] = statuses[0]
+        elif statuses:
+            placeholders = ", ".join(f":s{i}" for i in range(len(statuses)))
+            conditions.append(f"status IN ({placeholders})")
+            for i, s in enumerate(statuses):
+                params[f"s{i}"] = s
 
     if q:
         conditions.append("(name ILIKE :q OR niche ILIKE :q OR us_equivalent ILIKE :q)")
