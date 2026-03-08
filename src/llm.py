@@ -10,13 +10,13 @@ logger = structlog.get_logger()
 MODELS = {
     "opus": "claude-opus-4-20250514",
     "sonnet": "claude-sonnet-4-20250514",
-    "haiku": "claude-haiku-4-20250414",
+    "haiku": "claude-haiku-4-5-20251001",
 }
 
 COST_PER_1K = {
     "claude-opus-4-20250514": (0.015, 0.075),
     "claude-sonnet-4-20250514": (0.003, 0.015),
-    "claude-haiku-4-20250414": (0.00025, 0.00125),
+    "claude-haiku-4-5-20251001": (0.001, 0.005),
 }
 
 _client: anthropic.AsyncAnthropic | None = None
