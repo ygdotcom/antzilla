@@ -64,14 +64,52 @@ async def agent_list(request: Request, user: str = Depends(verify_credentials)):
 @router.post("/proposals/{proposal_id}/approve", response_class=HTMLResponse)
 async def approve_proposal(proposal_id: int, user: str = Depends(verify_credentials)):
     async with SessionLocal() as db:
+        row = (await db.execute(text(
+            "SELECT target_agent, category, description FROM improvements WHERE id = :id"
+        ), {"id": proposal_id})).fetchone()
+
         await db.execute(text("UPDATE improvements SET status = 'approved' WHERE id = :id"), {"id": proposal_id})
+
+        if row:
+            await db.execute(text(
+                "INSERT INTO agent_logs (agent_name, action, result, status) "
+                "VALUES ('ceo_dashboard', :action, :result, 'success')"
+            ), {
+                "action": f"improvement_approved: {row.target_agent} — {row.category}",
+                "result": row.description[:500] if row.description else "",
+            })
         await db.commit()
-    return HTMLResponse('<span class="text-green-400">Approved</span>')
+
+    # Notify Slack
+    if row:
+        try:
+            from src.slack import send
+            await send(
+                f":white_check_mark: *Improvement approved:* {row.target_agent}\n"
+                f"_{row.description[:200]}_"
+            )
+        except Exception:
+            pass
+
+    return HTMLResponse('<span class="text-green-400">Approved — logged to Console</span>')
 
 
 @router.post("/proposals/{proposal_id}/reject", response_class=HTMLResponse)
 async def reject_proposal(proposal_id: int, user: str = Depends(verify_credentials)):
     async with SessionLocal() as db:
+        row = (await db.execute(text(
+            "SELECT target_agent, category, description FROM improvements WHERE id = :id"
+        ), {"id": proposal_id})).fetchone()
+
         await db.execute(text("UPDATE improvements SET status = 'rejected' WHERE id = :id"), {"id": proposal_id})
+
+        if row:
+            await db.execute(text(
+                "INSERT INTO agent_logs (agent_name, action, result, status) "
+                "VALUES ('ceo_dashboard', :action, :result, 'success')"
+            ), {
+                "action": f"improvement_rejected: {row.target_agent} — {row.category}",
+                "result": row.description[:500] if row.description else "",
+            })
         await db.commit()
-    return HTMLResponse('<span class="text-red-400">Rejected</span>')
+    return HTMLResponse('<span class="text-zinc-500">Rejected</span>')
