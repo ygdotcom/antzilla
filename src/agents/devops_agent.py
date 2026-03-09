@@ -23,8 +23,7 @@ logger = structlog.get_logger()
 
 SERVICES = [
     {"name": "postgres", "url": None, "type": "db"},
-    {"name": "hatchet", "url": "http://hatchet-engine:8080/api/healthz", "type": "http"},
-    {"name": "plausible", "url": "http://plausible:8000/api/health", "type": "http"},
+    {"name": "hatchet", "url": "http://hatchet-dashboard:80", "type": "http"},
     {"name": "uptime_kuma", "url": "http://uptime-kuma:3001", "type": "http"},
 ]
 
