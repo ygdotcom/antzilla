@@ -1,198 +1,195 @@
 # Antzilla
 
-**An autonomous business engine.** Discovers SaaS ideas that work in the US but don't exist in Canada, validates them with real ads, builds MVPs, markets them for $0, sells via cold email + AI voice calls, and operates them — all with ~2-3 hours/week of human oversight.
+**An autonomous business engine.** Discovers SaaS ideas that work in the US but don't exist in Canada, builds fully functional apps, markets them via cold email + AI voice calls, and operates them — all from a single dashboard.
 
-32 autonomous agents orchestrated by [Hatchet](https://hatchet.run), running on a single GCP VM with Docker.
+32 autonomous agents. One "Approve" click builds a complete SaaS in ~8 minutes for ~$0.60.
 
 ```
-381 tests | 13,500 lines of Python | 69 source files | Supabase Auth | HTTPS
+391 tests | 17,000+ lines of Python | 80+ source files
+Supabase Auth | HTTPS | hub.antzilla.ca
 ```
+
+---
+
+## What It Actually Does
+
+```
+Approve an idea
+    ↓
+Brand Designer generates colors, fonts, name           (~$0.06, 12s)
+    ↓
+Architect designs pages, DB tables, API routes          (~$0.15, 25s)
+    ↓
+Copywriter writes all text in French + English          (~$0.06, 15s)
+    ↓
+Builder generates Next.js code with real Supabase CRUD  (~$0.25, 2min)
+    ↓
+Pushes to GitHub (template + generated code, 2 commits)
+    ↓
+Deploys to Vercel (auto-build from Git)
+    ↓
+Infra Setup: Supabase tables + Stripe products + env vars
+    ↓
+Design QA: generates SVG logo + reviews design
+    ↓
+Live app with auth, billing, dashboard, CRUD             Total: ~$0.60
+```
+
+Each generated app includes:
+- Supabase Auth (signup/login with password)
+- Stripe billing (Free $0 / Pro $49 / Business $99 CAD)
+- Real CRUD dashboard with Server Actions
+- Bilingual FR/EN (auto-detects browser language)
+- RLS on every table
+- Google Analytics
+- Brand colors + custom logo
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           CEO DASHBOARD (:9000)                              │
-│                  FastAPI + HTMX + Tailwind (dark theme)                      │
-│   Setup Wizard · Settings · Budget sliders · Kill/GO buttons · Knowledge     │
-└──────────────────────────────┬───────────────────────────────────────────────┘
-                               │ reads/writes
-┌──────────────────────────────▼───────────────────────────────────────────────┐
-│                        POSTGRES + pgvector (:5432)                            │
-│    25 tables · shared state · vector embeddings · encrypted secrets store     │
-└──────┬───────────┬───────────┬───────────┬───────────┬───────────┬───────────┘
-       │           │           │           │           │           │
-┌──────▼──┐ ┌──────▼──┐ ┌──────▼──┐ ┌──────▼──┐ ┌──────▼──┐ ┌──────▼──┐
-│ HATCHET │ │PLAUSIBLE│ │ UPTIME  │ │CLICKHSE │ │ FACTORY │ │  DASH   │
-│ ENGINE  │ │Analytics│ │  KUMA   │ │(Plausbl)│ │ WORKER  │ │  BOARD  │
-│  :8080  │ │  :8000  │ │  :3001  │ │         │ │(agents) │ │  :9000  │
-└─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
+CEO Dashboard (hub.antzilla.ca)
+  FastAPI + HTMX + Tailwind
+  Notifications · Console · Rebuild · Approve/Kill
+        │
+        ▼
+  Postgres + pgvector
+  25 tables · encrypted secrets · knowledge base
+        │
+  ┌─────┼─────────────────────────────┐
+  │     │                             │
+  ▼     ▼                             ▼
+Hatchet Engine         Factory Worker (32 agents)
+  Cron scheduling       Brand · Copy · Build · Deploy
+  DAG workflows         Leads · Enrich · Outreach · Voice
+  Retries               Analytics · Self-Reflection
 ```
 
 ---
 
-## How It Works
+## Pipeline: Idea → Live Business
 
 ```
-  DISCOVER          VALIDATE          BUILD            SELL              OPERATE
- ┌────────┐       ┌─────────┐      ┌────────┐      ┌─────────┐       ┌─────────┐
- │ Idea   │──▶──│ Validator│──▶──│Builder │──▶──│Distribtn│──▶──│Billing  │
- │Antzilla│  │   │  $150   │  │   │ Next.js│  │   │ Engine  │  │   │Support  │
- │  +     │  │   │  ads    │  │   │ + RLS  │  │   │ 5 sub-  │  │   │Referral │
- │ Deep   │  │   │ GO/KILL │  │   │ + i18n │  │   │ agents  │  │   │Upsell   │
- │ Scout  │  │   └─────────┘  │   └────────┘  │   └─────────┘  │   └─────────┘
- └────────┘  │                │               │                │
-             │   ┌─────────┐  │  ┌─────────┐  │  ┌──────────┐  │  ┌──────────┐
-             └──│  Brand  │  └─│ Domain  │  └─│  Content │  └─│ Analytics│
-                │ Designer│    │Provisnr │    │  Engine  │    │ Kill Score│
-                └─────────┘    └─────────┘    │  Social  │    │Knowledge │
-                                              │  Growth  │    │Self-Refl │
-                                              └──────────┘    └──────────┘
+ DISCOVER              BUILD                 SELL                 OPERATE
+┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│Idea Factory│──▶│Brand Designer│──▶│Lead Pipeline │──▶│Billing Agent │
+│Deep Scout │    │Copywriter    │    │Enrichment    │    │Support Agent │
+│  (auto)   │    │Builder       │    │Outreach      │    │Analytics     │
+│           │    │Infra Setup   │    │Reply Handler │    │Self-Reflect  │
+│           │    │Design QA     │    │Voice Agent   │    │Knowledge     │
+└──────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+   Claude           Claude              Apollo             Stripe
+   Serper           Vercel              Instantly           Resend
+                    GitHub              Retell AI           Twilio
+                    Supabase            ZeroBounce
+                    Stripe
 ```
 
 ---
 
-## Agent System — 32 Workflows
+## All 32 Agents
 
-All agents inherit from `BaseAgent`: budget circuit breaker (auto-downgrades model tier), execution logging, Slack alerting.
-
-### Wave 1 — Ship and Sell (Days 1-10)
-
-| # | Agent | Trigger | Model | Key feature |
-|---|-------|---------|-------|-------------|
-| 1 | Meta Orchestrator | Cron 6AM daily | Opus | CEO coordinator, triggers all others |
-| 2 | Idea Factory | Cron Monday 5AM | Sonnet | 12-criteria scoring, Canadian gap filter |
-| 3 | Deep Scout | On-demand | Opus | Scout Report + GTM Playbook (knowledge-informed) |
-| 4 | Validator | On-demand | Sonnet | $150 ads test, hardcoded GO/KILL rules |
-| 5 | Brand Designer | On-demand | Opus | Light + full mode, domain availability |
-| 6 | Domain Provisioner | On-demand | Sonnet | 12-step infra: .ca + .io/.co cold domains |
-| 7 | Builder | On-demand | Opus+Sonnet | RLS verification + security scan gates |
-| 21 | Analytics & Kill | Cron 11PM | Sonnet | Kill score 0-100, teardown workflow |
-
-### Distribution Engine — 5 Sub-agents
-
-The revenue engine. Reads from `gtm_playbooks` — change verticals via config, not code.
-
-| # | Agent | Key feature |
-|---|-------|-------------|
-| 12a | Lead Pipeline | Google Maps, RBQ, REQ, Federal Corp, associations |
-| 12b | Enrichment | Waterfall: Apollo → Hunter → scrape. Lead scoring 0-100 |
-| 12c | Signal Monitor | REQ registrations, building permits, competitor complaints |
-| 12d | Outreach | Tiered autonomy + quality gate (samples 3 emails via Claude) |
-| 12e | Reply Handler | 8 categories, human touchpoint for hot leads + first 5 customers |
-
-### Wave 2 — Grow (Week 3-4)
-
-| # | Agent | Key feature |
-|---|-------|-------------|
-| 9 | Content Engine | Editorial + programmatic SEO (6 templates × verticals × provinces) |
-| 10 | Social Agent | Syften monitoring, 90/10 anti-ban, brand reputation monitor |
-| 11 | Referral | NPS ≥ 9 instant invite, SMS priority, double-sided, ambassadors |
-| 26 | Voice Agent | **Warm calls only**, DNCL checked, 9AM-9:30PM calling hours |
-| 17 | Billing | Reverse trial, 4-email dunning, pre-expiry SMS, CA taxes |
-| 18 | Support | RAG via pgvector, bilingual, feature request accumulation |
-| 8 | i18n | FR/EN key validation, québécois quality check |
-| 13 | Email Nurture | 4 sequences, max 3/week/user frequency cap |
-
-### Wave 3 — Optimize (Month 2+)
-
-| # | Agent | Key feature |
-|---|-------|-------------|
-| 20 | Onboarding | Nudge at 24h/72h, aha moment detection, trigger referral |
-| 19 | Upsell | Usage-based, max 1 offer/month/customer |
-| 14 | Social Proof | NPS ≥ 8 testimonial requests, Google/Capterra reviews |
-| 15 | Competitor Watch | Weekly scrape, pricing changes, Product Hunt launches |
-| 16 | Fulfillment | Registry pattern, per-business handlers |
-| 22 | Self-Reflection | Opus: synthesizes ALL agents + ALL businesses weekly |
-| 23 | Legal Guardrail | CASL, CRTC, PIPEDA, Loi 101, billing dark patterns |
-| 24 | DevOps | 5-min health checks, daily backups, monthly restore test |
-| 25 | Budget Guardian | $50/day hard cap, cash flow per business, runway calc |
-| 27 | Growth Hacker | 12 tactic types, marketplace listing, template bait |
-| 28 | Knowledge | Cross-business learning, scoring calibration, meta-synthesis |
+| # | Agent | Trigger | What It Does |
+|---|-------|---------|-------------|
+| 1 | Meta Orchestrator | Daily 6AM | Coordinates all agents, Slack digest |
+| 2 | Idea Factory | Weekly Mon 5AM | Finds small SaaS gaps (all of Canada, deduplication) |
+| 3 | Deep Scout | Auto (score ≥ 7) | Market research + GTM Playbook |
+| 4 | Validator | On-demand | $150 ad test, GO/KILL |
+| 5 | Brand Designer | Auto (on approve) | Colors, fonts, name, domain check |
+| 6 | Domain Provisioner | On-demand | Full infra: domains, DNS, services |
+| 7 | Builder | Auto (on approve) | 3-call code gen, GitHub push, Vercel deploy |
+| 8 | i18n | Weekly Sun | FR/EN key validation |
+| 9 | Content Engine | Mon+Thu | Editorial + programmatic SEO |
+| 10 | Social Agent | 3x/day | Community monitoring, LinkedIn posts |
+| 11 | Referral | Weekly | NPS-triggered double-sided referrals |
+| 12a | Lead Pipeline | Daily | Google Maps leads via Serper |
+| 12b | Enrichment | Daily (after leads) | Apollo → Hunter → ZeroBounce |
+| 12c | Signal Monitor | Every 4h | Buying signals, permit data |
+| 12d | Outreach | Daily | Cold email via Instantly (tiered autonomy) |
+| 12e | Reply Handler | Every 30min | Classify + route (positive → Voice Agent) |
+| 13 | Email Nurture | Mon+Thu | 4 sequences, 3/week cap |
+| 14 | Social Proof | Monthly | Testimonial requests, review invites |
+| 15 | Competitor Watch | Weekly Wed | Scrape competitors, Product Hunt |
+| 16 | Fulfillment | On-demand | Claude-based generic handler |
+| 17 | Billing Agent | Daily + webhook | Stripe dunning, pre-expiry alerts |
+| 18 | Support Agent | Daily | Claude RAG responses, feature extraction |
+| 19 | Upsell | Weekly Mon | Usage-based offers, 1/month cap |
+| 20 | Onboarding | Daily | Stall nudges at 24h/72h |
+| 21 | Analytics | Nightly | Kill score 0-100, teardown workflow |
+| 22 | Self-Reflection | Weekly | Opus analysis of all agents |
+| 23 | Legal Guardrail | Weekly + events | CASL, DNCL, PIPEDA compliance |
+| 24 | DevOps | Every 15min + daily | Health checks (state-change alerts only), backups |
+| 25 | Budget Guardian | Hourly | Throttle at 90%, pause at 95% |
+| 26 | Voice Agent | Auto (from replies) | Retell AI warm calls, DNCL checked |
+| 27 | Growth Hacker | Weekly Tue | Tactic scoring + execution |
+| 28 | Knowledge | Weekly Sun | Cross-business pattern extraction |
+| 29 | Design QA | Auto (after build) | Logo generation + design review |
+| 30 | Copywriter | Auto (in pipeline) | FR+EN copy, conversion-optimized |
+| 31 | Infra Setup | Auto (in pipeline) | Supabase + Stripe + Vercel env vars |
 
 ---
 
 ## Safety Systems
 
-| System | What it does |
+| System | How It Works |
 |--------|-------------|
-| **Budget Circuit Breaker** | Every Claude call checks daily spend. 80% → downgrade model. 100% → hard stop. |
-| **Quality Gate** | Outreach samples 3 emails via Claude before batch send. Builder security-scans code for exposed keys. |
-| **Human Touchpoint** | Hot leads (score ≥ 80) → Slack. First 5 customers → always human. |
-| **Warm Calls Only** | Voice Agent blocks `new`, `contacted`, `enriched` leads. DNCL checked. $15K/call fine prevention. |
-| **RLS Verification** | Builder regex-checks every `CREATE TABLE` for matching `ENABLE ROW LEVEL SECURITY`. Auto-fixes violations. |
-| **Brand Monitor** | Negative sentiment < 0.3 → pause all social activity + Slack alert. |
-| **Teardown** | Kill button → cancel Instantly, Vercel, Stripe, Twilio, archive GitHub, mark leads. |
-| **Backup Restore** | Monthly: dump → restore to temp DB → verify → drop. Alerts if fails. |
-| **Legal Guardrail** | CASL unsub processing, CRTC calling hours, Loi 101 FR content, PIPEDA data handling. |
+| Budget Circuit Breaker | Every Claude call checks spend. 80% → Haiku. 90% → write MODEL_OVERRIDE. 95% → pause agents. |
+| Quality Gate | Outreach samples 3 emails via Claude before sending. Builder security-scans code. |
+| Human Touchpoint | Hot leads (score ≥ 80) → Slack with approve link. First 5 customers → always human. |
+| Warm Calls Only | Voice Agent blocks cold leads. DNCL checked via CRTC API. |
+| RLS Verification | Every generated migration checked for ENABLE ROW LEVEL SECURITY. Auto-fixes. |
+| Code Sanitizer | Fixes common Claude mistakes (missing newlines, missing await) before push. |
+| Graceful Infra | Missing API keys skip that step, don't crash the pipeline. |
 
 ---
 
-## Knowledge Accumulation
+## Dashboard
 
-The factory gets smarter with each business. Agent 28 (Knowledge Agent) extracts cross-business patterns weekly:
+Live at **https://hub.antzilla.ca** (Supabase Auth login).
 
-| Category | Example |
-|----------|---------|
-| `email_template_winner` | "Timeline hooks beat pain hooks 2.3x for trades" |
-| `channel_effectiveness` | "Facebook Groups has 3x lower CAC than cold email in QC" |
-| `idea_scoring_calibration` | "Ideas scoring 8+ on defensibility underperform — lower weight" |
-| `objection_response` | "Pricing objections convert 40% when responding with ROI calc" |
-| `churn_reason` | "Trades customers churn after avg 12 days inactivity" |
+Pages: Overview, Businesses (with rebuild), Ideas (multi-filter), Agents, Budget, Decisions, Console (real-time), Knowledge, Settings (API keys + team).
 
-Insights flow into: Deep Scout (GTM Playbooks), Outreach (email templates), Idea Factory (scoring weights), Reply Handler (objection responses).
+Notification bell polls every 10s. Validated ideas show as pending approvals. Slack notifications include clickable dashboard links.
 
 ---
 
-## Auth and Secrets
+## API Keys
 
-**Dashboard login** is via [Supabase Auth](https://supabase.com/auth) (email/password). First user gets admin role. Invite team members from Settings with roles (admin/operator/viewer). Session stored in HMAC-signed cookie.
+Configure in Settings. Only 3 are required to build apps:
 
-**API keys** are stored **AES-256-GCM encrypted** in the `secrets` table. The `.env` only has boot variables (Postgres password, encryption key, Supabase URL). First boot → Setup Wizard at `/setup` with 5 steps and test buttons per key.
-
-**HTTPS** via Caddy reverse proxy with auto-TLS. HTTP redirects to HTTPS.
-
----
-
-## Tech Stack
-
-| Layer | Choice |
-|-------|--------|
-| Orchestration | Hatchet (DAG workflows, cron, retries, dashboard) |
-| Auth | Supabase Auth (email/password, team invites, roles) |
-| LLM | Claude Opus/Sonnet/Haiku (auto-downgrading at budget limits) |
-| Database | Postgres + pgvector (CRM + RAG + secrets + knowledge) |
-| Reverse proxy | Caddy (automatic HTTPS, HTTP→HTTPS redirect) |
-| DNS | Cloudflare |
-| Domains | Namecheap (.ca + secondary cold email domains) |
-| Hosting | Vercel (per-business Next.js apps) |
-| Payments | Stripe (CAD, reverse trial, Stripe Tax) |
-| Cold email | Instantly.ai (secondary domains only, 4-6 week warmup) |
-| Voice | Retell AI + Twilio ($0.07/min, warm calls only) |
-| Analytics | Plausible (self-hosted, no cookie consent) |
-| Monitoring | Uptime Kuma (self-hosted health checks) |
+| Key | Required For | Status |
+|-----|-------------|--------|
+| `ANTHROPIC_API_KEY` | All Claude reasoning | Required |
+| `GITHUB_TOKEN` | Push code to repos | Required |
+| `VERCEL_TOKEN` | Deploy apps | Required |
+| `STRIPE_SECRET_KEY` | Billing setup | For payments |
+| `APOLLO_API_KEY` | Lead enrichment | For distribution |
+| `INSTANTLY_API_KEY` | Cold email | For outreach |
+| `RESEND_API_KEY` | Transactional email | For nurture |
+| `RETELL_API_KEY` | AI voice calls | For warm calls |
+| `TWILIO_*` | Phone infrastructure | For voice |
+| `SLACK_WEBHOOK_URL` | Notifications | Recommended |
 
 ---
 
 ## Quick Start
 
 ```bash
-# Local development
-cp .env.example .env    # Add Supabase keys + generate ENCRYPTION_KEY
+# Local
+cp .env.example .env
 docker compose up -d
-# Dashboard: https://localhost  (login with Supabase user)
+# Dashboard: https://localhost
 
-# Run tests
+# Tests
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest tests/ -v    # 381 tests, ~1 second
+python -m pytest tests/     # 391 tests, ~3 seconds
 
-# Deploy to GCP (Montreal, e2-standard-4, 200GB SSD)
+# Deploy to GCP (Montreal)
 bash scripts/deploy-gcp.sh
 
-# Update deployed instance
+# Update
 bash scripts/update.sh
 ```
 
@@ -201,40 +198,49 @@ bash scripts/update.sh
 ## Project Structure
 
 ```
-factory/
-├── docker-compose.yml              # 8 services
-├── Dockerfile                       # Factory worker
-├── Dockerfile.dashboard             # CEO Dashboard
-├── .env.example                     # 6 boot variables only
-├── SPEC.md                          # Complete specification
+antzilla/
+├── docker-compose.yml                # 8 services
+├── Caddyfile                         # HTTPS + hub.antzilla.ca
+├── Dockerfile + Dockerfile.dashboard
+├── .env.example                      # Boot variables only
+├── SPEC.md                           # Full specification
 │
 ├── src/
-│   ├── main.py                      # Registers all 32+ workflows
-│   ├── config.py                    # DB-first secrets with get()
-│   ├── crypto.py                    # AES-256-GCM encrypt/decrypt
-│   ├── db.py                        # SQLAlchemy async engine
-│   ├── llm.py                       # call_claude() with cost tracking
-│   ├── quality.py                   # Email quality gate + security scan
-│   ├── knowledge.py                 # Cross-business knowledge queries
+│   ├── main.py                       # Registers all 32 workflows
+│   ├── config.py                     # DB-first secrets
+│   ├── crypto.py                     # AES-256-GCM
+│   ├── db.py                         # SQLAlchemy async
+│   ├── llm.py                        # call_claude() with streaming + cost
+│   ├── slack.py                      # Rich notifications with links
+│   ├── quality.py                    # Email quality + security scan
+│   ├── knowledge.py                  # Cross-business learning
 │   │
-│   ├── agents/                      # 32 agent files
-│   │   ├── base_agent.py            # Budget circuit breaker
-│   │   ├── meta_orchestrator.py     # through growth_hacker.py
-│   │   ├── knowledge_agent.py       # Agent 28: long-term memory
-│   │   └── distribution/            # 5 sub-agents
+│   ├── agents/                       # 32 agent files
+│   │   ├── base_agent.py
+│   │   ├── builder.py                # 3-call code gen + sanitizer
+│   │   ├── infra_setup.py            # Supabase + Stripe + Vercel env
+│   │   ├── design_qa.py              # Logo + visual review
+│   │   ├── copywriter.py             # FR+EN conversion copy
+│   │   └── distribution/             # 5 sub-agents
 │   │
-│   ├── integrations/                # 11 API clients
+│   ├── integrations/                 # 11 API clients
 │   │
-│   └── dashboard/                   # CEO Dashboard
-│       ├── app.py + deps.py
-│       ├── routes/                  # 9 route modules
-│       └── templates/               # 10 Jinja2 templates
+│   └── dashboard/
+│       ├── app.py                    # Build pipeline + notifications
+│       ├── deps.py                   # Supabase Auth + sessions
+│       ├── routes/                   # 10 route modules
+│       └── templates/                # 12 Jinja2 templates
 │
-├── template-repo/                   # Next.js 15 template for businesses
-├── migrations/001_init.sql          # 25 tables + indexes
-├── prompts/                         # 4 system prompts
-├── scripts/                         # deploy, setup, seed, update
-└── tests/                           # 378 tests across 15 files
+├── template-repo/                    # Next.js 15 template
+│   ├── src/components/ui/            # Card, Button, Badge, Input
+│   ├── src/lib/supabase/             # Pre-configured client
+│   ├── supabase/migrations/          # RLS-enforced schema
+│   └── src/app/[locale]/             # i18n routing
+│
+├── prompts/                          # System prompts
+├── migrations/                       # Antzilla DB schema
+├── scripts/                          # Deploy, setup, seed
+└── tests/                            # 391 tests
 ```
 
 ---
