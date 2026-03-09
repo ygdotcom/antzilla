@@ -61,10 +61,12 @@ SECRETS_SCHEMA = [
             {"key": "NAMECHEAP_API_KEY", "name": "Namecheap API Key", "placeholder": ""},
             {"key": "NAMECHEAP_API_USER", "name": "Namecheap API User", "placeholder": ""},
             {"key": "CLOUDFLARE_API_TOKEN", "name": "Cloudflare API Token", "placeholder": ""},
+            {"key": "V0_API_KEY", "name": "v0 API Key (app builder)", "placeholder": "v0_..."},
             {"key": "VERCEL_TOKEN", "name": "Vercel Token", "placeholder": ""},
             {"key": "GITHUB_TOKEN", "name": "GitHub Token", "placeholder": "ghp_..."},
             {"key": "SUPABASE_ACCESS_TOKEN", "name": "Supabase Access Token", "placeholder": ""},
             {"key": "STRIPE_SECRET_KEY", "name": "Stripe Secret Key", "placeholder": "sk_test_..."},
+            {"key": "STRIPE_PUBLISHABLE_KEY", "name": "Stripe Publishable Key", "placeholder": "pk_test_..."},
         ],
     },
     {
@@ -176,6 +178,15 @@ async def _test_github(value: str) -> dict:
         return {"status": "ok"} if resp.status_code == 200 else {"status": "failed", "error": f"HTTP {resp.status_code}"}
 
 
+async def _test_v0(value: str) -> dict:
+    async with httpx.AsyncClient(timeout=10) as c:
+        resp = await c.get(
+            "https://api.v0.dev/v1/projects",
+            headers={"Authorization": f"Bearer {value}"},
+        )
+        return {"status": "ok"} if resp.status_code == 200 else {"status": "failed", "error": f"HTTP {resp.status_code}"}
+
+
 async def _test_generic(value: str) -> dict:
     return {"status": "ok"} if value and len(value) > 5 else {"status": "failed", "error": "Value too short"}
 
@@ -186,6 +197,7 @@ TEST_FUNCTIONS = {
     "SLACK_WEBHOOK_URL": _test_slack,
     "VERCEL_TOKEN": _test_vercel,
     "GITHUB_TOKEN": _test_github,
+    "V0_API_KEY": _test_v0,
 }
 
 

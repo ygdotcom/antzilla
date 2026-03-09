@@ -252,25 +252,38 @@ async def run_build_pipeline(business_id: int):
             build_ctx._input["messages_en"] = copy_result.get("messages_en", {})
             build_ctx._input["app_name"] = copy_result.get("app_name", "")
 
-            # Step 2c-2h: Continue builder pipeline
-            remaining_steps = [
-                ("generate_code", builder.generate_code),
-                ("verify_rls", builder.verify_rls),
-                ("create_github_repo", builder.create_github_repo),
-                ("push_template", builder.push_template),
-                ("push_to_github", builder.push_to_github),
-                ("deploy_vercel", builder.deploy_vercel),
-                ("run_lighthouse", builder.run_lighthouse),
-                ("finalize", builder.finalize),
-            ]
-            for step_name, step_fn in remaining_steps:
-                logger.info("builder_step", step=step_name, business=biz.name)
-                result = await step_fn(build_ctx)
-                build_ctx._outputs[step_name] = result if isinstance(result, dict) else {}
-                if step_name == "generate_code":
-                    code_files = (result or {}).get("code_output", {}).get("files", [])
-                    logger.info("code_gen_result", files=len(code_files),
-                                migrations=len((result or {}).get("code_output", {}).get("migrations", [])))
+            # Step 2c: Build the app (v0 API or Claude fallback)
+            v0_key = settings.get("V0_API_KEY")
+
+            if v0_key:
+                # v0 PATH: one API call builds + deploys the entire app
+                logger.info("builder_step", step="build_with_v0", business=biz.name)
+                v0_result = await builder.build_with_v0(build_ctx)
+                build_ctx._outputs["generate_code"] = v0_result
+                deployment_url_override = v0_result.get("deployment_url", "")
+                if deployment_url_override:
+                    # v0 handles deploy — skip our template/push/vercel steps
+                    build_ctx._outputs["finalize"] = {
+                        "deployment_url": deployment_url_override,
+                        "github_repo": "",
+                        "files_pushed": v0_result.get("v0_result", {}).get("file_count", 0),
+                    }
+            else:
+                # FALLBACK PATH: Claude code gen + template + GitHub + Vercel
+                remaining_steps = [
+                    ("generate_code", builder.generate_code),
+                    ("verify_rls", builder.verify_rls),
+                    ("create_github_repo", builder.create_github_repo),
+                    ("push_template", builder.push_template),
+                    ("push_to_github", builder.push_to_github),
+                    ("deploy_vercel", builder.deploy_vercel),
+                    ("run_lighthouse", builder.run_lighthouse),
+                    ("finalize", builder.finalize),
+                ]
+                for step_name, step_fn in remaining_steps:
+                    logger.info("builder_step", step=step_name, business=biz.name)
+                    result = await step_fn(build_ctx)
+                    build_ctx._outputs[step_name] = result if isinstance(result, dict) else {}
 
             finalize_result = build_ctx._outputs.get("finalize", {})
             deployment_url = finalize_result.get("deployment_url", "")

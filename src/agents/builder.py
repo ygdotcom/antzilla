@@ -448,8 +448,141 @@ class Builder(BaseAgent):
 
         return {"architecture": architecture, "cost_usd": cost}
 
+    async def build_with_v0(self, context) -> dict:
+        """Step 2: Build the full app using v0 Platform API.
+
+        Sends a detailed prompt to v0 which generates a complete working
+        Next.js app with auth, billing, CRUD, and deploys it.
+        """
+        input_data = context.workflow_input()
+        business_id = input_data.get("business_id")
+        brand_kit = input_data.get("brand_kit", {})
+        niche = input_data.get("niche", "")
+        messages_fr = input_data.get("messages_fr", {})
+        messages_en = input_data.get("messages_en", {})
+        app_name = input_data.get("app_name", "")
+        arch = context.step_output("generate_architecture")
+        architecture = arch.get("architecture", {})
+
+        from src.integrations import v0_client
+
+        # Build a comprehensive prompt for v0
+        colors = brand_kit.get("colors", {})
+        fonts = brand_kit.get("typography", {})
+        features = architecture.get("features", [])
+        pricing = architecture.get("pricing", {})
+        db_tables = architecture.get("database_tables", [])
+        headline_fr = architecture.get("headline_fr", "")
+        headline_en = architecture.get("headline_en", "")
+
+        prompt = f"""Build a complete, production-ready Next.js SaaS application called "{app_name}".
+
+BUSINESS: {niche}
+DESCRIPTION: {architecture.get("description", "")}
+
+REQUIREMENTS:
+1. LANDING PAGE with bilingual FR/EN support (use next-intl)
+   - French headline: "{headline_fr}"
+   - English headline: "{headline_en}"
+   - Features section with 3 features: {json.dumps([f.get("name_en", "") for f in features[:3]])}
+   - Pricing: Free $0 / Pro ${pricing.get("pro", {}).get("price", 49)} / Business ${pricing.get("business", {}).get("price", 99)} CAD/month
+   - CTA: 14-day free trial, no credit card required
+
+2. AUTH with Supabase (@supabase/supabase-js + @supabase/ssr)
+   - Signup with email + password
+   - Login page
+   - Protected /dashboard route
+   - Supabase URL and anon key from env vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+3. DASHBOARD with real CRUD
+   - The core entity for this business is: {db_tables[0].get("name", "items") if db_tables else "items"}
+   - Columns: {json.dumps(db_tables[0].get("columns", ["name", "description", "status"])) if db_tables else '["name", "description", "status"]'}
+   - List view with data table
+   - Create form (modal or page)
+   - Edit and delete actions
+   - Stats cards at top (total count, active count, etc.)
+   - Server Actions for mutations
+   - Pre-populated sample data on first login
+
+4. STRIPE BILLING
+   - Pricing page with 3 tiers
+   - Stripe checkout integration
+   - Use STRIPE_SECRET_KEY and NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY from env vars
+
+5. DESIGN
+   - Primary color: {colors.get("primary", "#2563eb")}
+   - Accent color: {colors.get("accent", "#8b5cf6")}
+   - Font: {fonts.get("body", "Inter")}
+   - Professional, Stripe-level design quality
+   - Responsive, mobile-friendly
+
+6. SUPABASE MIGRATION (in supabase/migrations/)
+   - Tables with RLS enabled
+   - user_id column on every table referencing auth.users
+   - Row Level Security policies: USING (auth.uid() = user_id)
+
+7. INTERNATIONALIZATION
+   - next-intl for FR/EN
+   - Auto-detect browser language
+   - French as default locale
+
+Include: package.json, tailwind.config, all pages, all components, all API routes, all migrations.
+The app must compile and deploy without errors.
+"""
+
+        try:
+            result = await v0_client.build_app(prompt=prompt, name=app_name or niche)
+
+            await self.log_execution(
+                action="build_with_v0",
+                result={
+                    "project_id": result.get("project_id"),
+                    "chat_id": result.get("chat_id"),
+                    "demo_url": result.get("demo_url"),
+                    "deployment_url": result.get("deployment_url"),
+                    "file_count": result.get("file_count", 0),
+                },
+                business_id=business_id,
+            )
+
+            # Save the v0 project info to the business
+            async with SessionLocal() as db:
+                domain = result.get("deployment_url") or result.get("demo_url") or ""
+                await db.execute(
+                    text(
+                        "UPDATE businesses SET domain = :domain, "
+                        "status = 'pre_launch', updated_at = NOW() WHERE id = :id"
+                    ),
+                    {"domain": domain, "id": business_id},
+                )
+                await db.commit()
+
+            return {
+                "v0_result": result,
+                "deployment_url": result.get("deployment_url") or result.get("demo_url"),
+                "project_id": result.get("project_id"),
+                "chat_id": result.get("chat_id"),
+                "success": True,
+            }
+
+        except Exception as exc:
+            logger.error("v0_build_failed", error=str(exc), error_type=type(exc).__name__)
+            await self.log_execution(
+                action="build_with_v0",
+                result={"error": str(exc)},
+                status="error",
+                error_message=str(exc),
+                business_id=business_id,
+            )
+            return {"success": False, "error": str(exc)}
+
     async def generate_code(self, context) -> dict:
-        """Step 2: Generate business code in 3 focused calls (not one massive one)."""
+        """Step 2 (fallback): Generate code via Claude if v0 API is not configured."""
+        v0_key = settings.get("V0_API_KEY")
+        if v0_key:
+            return await self.build_with_v0(context)
+
+        # Fallback to Claude-based code gen (3 focused calls)
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
         brand_kit = input_data.get("brand_kit", {})
@@ -471,66 +604,37 @@ class Builder(BaseAgent):
             "translation_keys": available_keys[:100],
         }, default=str)[:15_000]
 
-        # --- Call 1: Landing page ---
-        try:
-            resp1, cost1 = await call_claude(
-                model_tier=model_tier,
-                system=LANDING_PAGE_PROMPT,
-                user=base_context,
-                max_tokens=8192,
-                temperature=0.2,
-            )
-            total_cost += cost1
-            parsed = _parse_json_response(resp1)
-            if parsed and parsed.get("files"):
-                all_files.extend(parsed["files"])
-                logger.info("code_gen_landing", files=len(parsed["files"]))
-        except Exception as exc:
-            logger.warning("code_gen_landing_failed", error=str(exc))
-
-        # --- Call 2: Dashboard + CRUD ---
-        try:
-            resp2, cost2 = await call_claude(
-                model_tier=model_tier,
-                system=DASHBOARD_CRUD_PROMPT,
-                user=base_context,
-                max_tokens=8192,
-                temperature=0.2,
-            )
-            total_cost += cost2
-            parsed = _parse_json_response(resp2)
-            if parsed and parsed.get("files"):
-                all_files.extend(parsed["files"])
-                logger.info("code_gen_dashboard", files=len(parsed["files"]))
-        except Exception as exc:
-            logger.warning("code_gen_dashboard_failed", error=str(exc))
-
-        # --- Call 3: Migration ---
-        try:
-            resp3, cost3 = await call_claude(
-                model_tier=model_tier,
-                system=MIGRATION_PROMPT,
-                user=base_context,
-                max_tokens=4096,
-                temperature=0.1,
-            )
-            total_cost += cost3
-            parsed = _parse_json_response(resp3)
-            if parsed and parsed.get("migrations"):
-                all_migrations.extend(parsed["migrations"])
-                logger.info("code_gen_migration", count=len(parsed["migrations"]))
-        except Exception as exc:
-            logger.warning("code_gen_migration_failed", error=str(exc))
+        for prompt_name, prompt_text, max_tok in [
+            ("landing", LANDING_PAGE_PROMPT, 8192),
+            ("dashboard", DASHBOARD_CRUD_PROMPT, 8192),
+            ("migration", MIGRATION_PROMPT, 4096),
+        ]:
+            try:
+                resp, cost = await call_claude(
+                    model_tier=model_tier,
+                    system=prompt_text,
+                    user=base_context,
+                    max_tokens=max_tok,
+                    temperature=0.2,
+                )
+                total_cost += cost
+                parsed = _parse_json_response(resp)
+                if parsed:
+                    if parsed.get("files"):
+                        all_files.extend(parsed["files"])
+                    if parsed.get("migrations"):
+                        all_migrations.extend(parsed["migrations"])
+                    logger.info(f"code_gen_{prompt_name}", files=len(parsed.get("files", [])))
+            except Exception as exc:
+                logger.warning(f"code_gen_{prompt_name}_failed", error=str(exc))
 
         code_output = {"files": all_files, "migrations": all_migrations}
-
         await self.log_execution(
             action="generate_code",
             result={"files": len(all_files), "migrations": len(all_migrations)},
             cost_usd=total_cost,
             business_id=business_id,
         )
-
         return {"code_output": code_output, "cost_usd": total_cost}
 
     async def verify_rls(self, context) -> dict:
