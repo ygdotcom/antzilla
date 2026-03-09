@@ -7,36 +7,68 @@
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-2xl font-semibold text-white">Live Console</h2>
-      <p class="text-zinc-400 text-sm mt-1">Real-time factory activity. Auto-refreshes every 5 seconds.</p>
+      <p class="text-zinc-400 text-sm mt-1">All factory activity in real-time. Auto-refreshes every 5 seconds.</p>
     </div>
     <div class="flex items-center gap-3">
       <div class="flex items-center gap-2">
         <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
         <span class="text-zinc-400 text-sm">Live</span>
       </div>
-      <button onclick="document.getElementById('feed').innerHTML=''; htmx.trigger('#feed','load')" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm text-zinc-300 transition-colors">
-        Clear
-      </button>
     </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="flex items-center gap-3">
+    <select id="agent-filter" onchange="applyConsoleFilters()" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 focus:outline-none">
+      <option value="">All agents</option>
+      {% for a in agents %}
+      <option value="{{ a }}">{{ a }}</option>
+      {% endfor %}
+    </select>
+    <select id="biz-filter" onchange="applyConsoleFilters()" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 focus:outline-none">
+      <option value="">All businesses</option>
+      {% for b in businesses %}
+      <option value="{{ b.id }}">{{ b.name }}</option>
+      {% endfor %}
+    </select>
+    <button onclick="document.getElementById('agent-filter').value='';document.getElementById('biz-filter').value='';applyConsoleFilters()" class="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
+      Clear filters
+    </button>
   </div>
 
   <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
     <!-- Header -->
     <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-950">
-      <span class="text-zinc-500 text-xs w-44 shrink-0">Time</span>
-      <span class="text-zinc-500 text-xs w-12">Status</span>
-      <span class="text-zinc-500 text-xs">Agent</span>
-      <span class="text-zinc-500 text-xs">Action</span>
+      <span class="text-zinc-500 text-xs w-32 shrink-0">Time</span>
+      <span class="text-zinc-500 text-xs w-5"></span>
+      <span class="text-zinc-500 text-xs w-28">Agent</span>
+      <span class="text-zinc-500 text-xs flex-1">Action</span>
+      <span class="text-zinc-500 text-xs">Business</span>
+      <span class="text-zinc-500 text-xs">Cost</span>
     </div>
 
-    <!-- Feed — auto-refreshes every 5 seconds -->
+    <!-- Feed -->
     <div id="feed"
          hx-get="/console/feed"
          hx-trigger="load, every 5s"
          hx-swap="innerHTML"
-         class="max-h-[70vh] overflow-y-auto font-mono">
+         class="max-h-[75vh] overflow-y-auto">
       <div class="px-4 py-8 text-center text-zinc-500">Loading...</div>
     </div>
   </div>
 </div>
+
+<script>
+function applyConsoleFilters() {
+  const agent = document.getElementById('agent-filter').value;
+  const biz = document.getElementById('biz-filter').value;
+  const params = new URLSearchParams();
+  if (agent) params.set('agent', agent);
+  if (biz) params.set('business_id', biz);
+  const url = '/console/feed' + (params.toString() ? '?' + params.toString() : '');
+  const feed = document.getElementById('feed');
+  feed.setAttribute('hx-get', url);
+  htmx.trigger(feed, 'load');
+}
+</script>
 {% endblock %}
