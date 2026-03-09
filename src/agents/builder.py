@@ -278,9 +278,11 @@ import { revalidatePath } from 'next/cache'
 CRITICAL CODE QUALITY RULES:
 - Use semicolons at end of every statement
 - Each statement on its own line (never two on one line)
-- Proper TypeScript types on all variables
-- All imports at top of file
 - const supabase = await createClient() — MUST await
+- Use 'any' type for Supabase query results: const { data } = await supabase.from('table').select('*')
+- Do NOT use Supabase joins or nested selects — keep queries simple: .select('*')
+- Access data with optional chaining: item?.field_name
+- All imports at top of file
 
 Respond ONLY with valid JSON:
 {"files": [
