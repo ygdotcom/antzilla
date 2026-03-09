@@ -151,7 +151,7 @@ async def deploy(project_id: str, chat_id: str, version_id: str) -> dict:
 
 
 async def build_app(prompt: str, name: str = "") -> dict:
-    """High-level: create project + generate app + get files + deploy.
+    """High-level: create project + generate app + poll for completion + deploy.
 
     Returns {"project_id", "chat_id", "demo_url", "deployment_url", "files"}.
     """
@@ -159,38 +159,69 @@ async def build_app(prompt: str, name: str = "") -> dict:
     project = await create_project(name or "antzilla-biz")
     project_id = project.get("id", "")
 
-    # Generate app from prompt
+    # Create chat — this returns immediately, generation happens async
     chat = await create_chat(prompt, project_id=project_id)
     chat_id = chat.get("id", "")
+    web_url = chat.get("webUrl", chat.get("url", ""))
 
-    # Wait for generation to complete and get the chat with files
-    await asyncio.sleep(5)
-    chat_data = await get_chat(chat_id)
+    logger.info("v0_chat_started", chat_id=chat_id, web_url=web_url)
 
-    # Get demo URL
-    demo_url = chat_data.get("demo", "")
-    latest_version = chat_data.get("latestVersion", {})
-    version_id = latest_version.get("id", "")
+    # Poll for completion — v0 generates code asynchronously
+    # Check every 15s for up to 5 minutes
+    version_id = ""
+    demo_url = ""
+    files = []
 
-    # Get generated files
-    files = chat_data.get("files", [])
+    for attempt in range(20):
+        await asyncio.sleep(15)
+        try:
+            chat_data = await get_chat(chat_id)
+            latest_version = chat_data.get("latestVersion", {})
+            version_id = latest_version.get("id", "")
+            demo_url = chat_data.get("demo", "")
+            files = chat_data.get("files", [])
 
-    # Deploy
+            if version_id or demo_url:
+                logger.info("v0_generation_complete", version_id=version_id,
+                            demo_url=demo_url, files=len(files), attempts=attempt + 1)
+                break
+
+            # Check if messages have code
+            messages = chat_data.get("messages", [])
+            for msg in messages:
+                if msg.get("role") == "assistant" and msg.get("files"):
+                    files = msg["files"]
+                    break
+
+            if files:
+                logger.info("v0_files_found_in_messages", files=len(files), attempts=attempt + 1)
+                break
+
+            logger.info("v0_polling", attempt=attempt + 1, has_version=bool(version_id))
+        except Exception as exc:
+            logger.warning("v0_poll_error", attempt=attempt + 1, error=str(exc))
+
+    # Deploy if we have a version
     deployment = {}
+    deployment_url = demo_url
     if project_id and chat_id and version_id:
         try:
             deployment = await deploy(project_id, chat_id, version_id)
+            deployment_url = deployment.get("url", demo_url)
         except Exception as exc:
             logger.warning("v0_deploy_failed", error=str(exc))
 
-    deployment_url = deployment.get("url", demo_url)
+    # If no deployment URL, use the v0 web URL as fallback
+    if not deployment_url and web_url:
+        deployment_url = web_url
 
     return {
         "project_id": project_id,
         "chat_id": chat_id,
         "version_id": version_id,
-        "demo_url": demo_url,
+        "demo_url": demo_url or web_url,
         "deployment_url": deployment_url,
+        "web_url": web_url,
         "files": files,
         "file_count": len(files),
     }
