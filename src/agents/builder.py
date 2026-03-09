@@ -194,13 +194,12 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function createItem(formData: FormData) {
-  const supabase = await createClient()
+  const supabase = await createClient()  // MUST await — it returns a Promise
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
   await supabase.from('items').insert({
     user_id: user.id,
-    name: formData.get('name'),
-    // ... other fields
+    name: formData.get('name') as string,
   })
   revalidatePath('/dashboard')
 }
@@ -252,7 +251,9 @@ Generate a functional dashboard with CRUD for a SaaS product. You receive the ar
 The Supabase client is pre-configured:
 - Server: import { createClient } from '@/lib/supabase/server'
 - Client: import { createClient } from '@/lib/supabase/client'
-- Auth is set up — use supabase.auth.getUser()
+- CRITICAL: createClient() returns a Promise. ALWAYS await it:
+  const supabase = await createClient()
+- Auth: const { data: { user } } = await supabase.auth.getUser()
 
 REQUIREMENTS:
 1. Dashboard page (server component) that fetches real data from Supabase
@@ -264,6 +265,10 @@ REQUIREMENTS:
 7. Pre-populated sample data check (the DB trigger handles this)
 
 Use these packages ONLY: next-intl, lucide-react, @/components/ui/card, @/components/ui/button, @/components/ui/input, @/components/ui/badge
+
+CRITICAL — createClient() returns a Promise. You MUST await it:
+  const supabase = await createClient()  // CORRECT
+  const supabase = createClient()        // WRONG — will crash
 
 Use Server Actions pattern:
 'use server'
