@@ -545,15 +545,21 @@ The app must compile and deploy without errors.
                 business_id=business_id,
             )
 
-            # Save the v0 project info to the business
+            # Save v0 project info to the business
             async with SessionLocal() as db:
                 domain = result.get("deployment_url") or result.get("demo_url") or ""
+                # Store v0 IDs in config for follow-up messages
+                biz = (await db.execute(text("SELECT config FROM businesses WHERE id = :id"), {"id": business_id})).fetchone()
+                config = biz.config if isinstance(biz.config, dict) else {} if biz else {}
+                config["v0_project_id"] = result.get("project_id", "")
+                config["v0_chat_id"] = result.get("chat_id", "")
+                config["v0_version_id"] = result.get("version_id", "")
                 await db.execute(
                     text(
-                        "UPDATE businesses SET domain = :domain, "
+                        "UPDATE businesses SET domain = :domain, config = :cfg, "
                         "status = 'pre_launch', updated_at = NOW() WHERE id = :id"
                     ),
-                    {"domain": domain, "id": business_id},
+                    {"domain": domain, "cfg": json.dumps(config), "id": business_id},
                 )
                 await db.commit()
 

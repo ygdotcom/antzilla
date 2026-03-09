@@ -236,3 +236,67 @@ async def rebuild_business(request: Request, slug: str, user: str = Depends(veri
     return HTMLResponse(
         '<span class="text-brand animate-pulse">Rebuilding... check Console</span>'
     )
+
+
+@router.post("/{slug}/prompt", response_class=HTMLResponse)
+async def vibe_code(request: Request, slug: str, user: str = Depends(verify_credentials)):
+    """Send a prompt to v0 to modify/improve the business app."""
+    from src.config import settings
+
+    form = await request.form()
+    prompt = form.get("prompt", "").strip()
+    if not prompt:
+        return HTMLResponse('<div class="text-red-400 text-sm">Enter a prompt</div>')
+
+    v0_key = settings.get("V0_API_KEY")
+    if not v0_key:
+        return HTMLResponse('<div class="text-red-400 text-sm">V0_API_KEY not configured in Settings</div>')
+
+    async with SessionLocal() as db:
+        biz = (await db.execute(text(
+            "SELECT id, config FROM businesses WHERE slug = :slug"
+        ), {"slug": slug})).fetchone()
+        if not biz:
+            return HTMLResponse("Not found", status_code=404)
+
+    config = _parse_config(biz.config)
+    chat_id = config.get("v0_chat_id", "")
+
+    if not chat_id:
+        return HTMLResponse(
+            '<div class="text-yellow-400 text-sm">No v0 chat found for this business. '
+            'Rebuild with V0_API_KEY configured to enable vibe-coding.</div>'
+        )
+
+    try:
+        from src.integrations.v0_client import send_message, get_chat
+        result = await send_message(chat_id, prompt)
+
+        # Get updated demo URL
+        chat_data = await get_chat(chat_id)
+        demo_url = chat_data.get("demo", "")
+
+        # Log the action
+        async with SessionLocal() as db:
+            await db.execute(text(
+                "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+                "VALUES ('ceo_dashboard', 'vibe_code', :result, 'success', :biz_id)"
+            ), {
+                "result": json.dumps({"prompt": prompt[:200], "chat_id": chat_id}),
+                "biz_id": biz.id,
+            })
+            if demo_url:
+                await db.execute(text(
+                    "UPDATE businesses SET domain = :domain, updated_at = NOW() WHERE id = :id"
+                ), {"domain": demo_url, "id": biz.id})
+            await db.commit()
+
+        return HTMLResponse(
+            f'<div class="space-y-2">'
+            f'<div class="text-brand text-sm">Sent to v0. Changes deploying...</div>'
+            f'{f"""<a href="https://{demo_url}" target="_blank" class="text-brand text-xs hover:underline">Preview → {demo_url[:50]}</a>""" if demo_url else ""}'
+            f'</div>'
+        )
+
+    except Exception as exc:
+        return HTMLResponse(f'<div class="text-red-400 text-sm">Error: {exc}</div>')
