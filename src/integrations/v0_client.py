@@ -48,18 +48,28 @@ async def create_chat(prompt: str, project_id: str | None = None) -> dict:
     """Create a chat — v0 generates an app from the prompt.
 
     Returns chat object with id, files, demo URL, etc.
-    The generation may take 30-120 seconds.
+    v0 streams the response — generation can take 60-180 seconds.
     """
-    payload = {"initialMessage": prompt}
+    payload: dict = {"message": prompt}
     if project_id:
         payload["projectId"] = project_id
 
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(
             f"{BASE_URL}/v1/chats",
             headers=_headers(),
             json=payload,
         )
+        if resp.status_code == 422:
+            # Try alternative field name
+            payload2 = {"initialMessage": prompt}
+            if project_id:
+                payload2["projectId"] = project_id
+            resp = await client.post(
+                f"{BASE_URL}/v1/chats",
+                headers=_headers(),
+                json=payload2,
+            )
         resp.raise_for_status()
         data = resp.json()
         logger.info("v0_chat_created", chat_id=data.get("id"))
@@ -90,7 +100,7 @@ async def init_chat_with_files(files: list[dict], project_id: str | None = None,
 
 async def send_message(chat_id: str, message: str) -> dict:
     """Send a follow-up message to iterate on the app."""
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(
             f"{BASE_URL}/v1/chats/{chat_id}/messages",
             headers=_headers(),

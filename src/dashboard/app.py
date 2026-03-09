@@ -255,20 +255,25 @@ async def run_build_pipeline(business_id: int):
             # Step 2c: Build the app (v0 API or Claude fallback)
             v0_key = settings.get("V0_API_KEY")
 
+            use_v0 = False
             if v0_key:
                 # v0 PATH: one API call builds + deploys the entire app
                 logger.info("builder_step", step="build_with_v0", business=biz.name)
                 v0_result = await builder.build_with_v0(build_ctx)
                 build_ctx._outputs["generate_code"] = v0_result
                 deployment_url_override = v0_result.get("deployment_url", "")
-                if deployment_url_override:
-                    # v0 handles deploy — skip our template/push/vercel steps
+                if v0_result.get("success") and deployment_url_override:
+                    use_v0 = True
                     build_ctx._outputs["finalize"] = {
                         "deployment_url": deployment_url_override,
                         "github_repo": "",
                         "files_pushed": v0_result.get("v0_result", {}).get("file_count", 0),
                     }
-            else:
+                else:
+                    logger.warning("v0_failed_falling_back_to_claude",
+                                   error=v0_result.get("error", "no deployment URL"))
+
+            if not use_v0:
                 # FALLBACK PATH: Claude code gen + template + GitHub + Vercel
                 remaining_steps = [
                     ("generate_code", builder.generate_code),

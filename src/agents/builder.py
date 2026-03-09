@@ -554,12 +554,13 @@ The app must compile and deploy without errors.
                 config["v0_project_id"] = result.get("project_id", "")
                 config["v0_chat_id"] = result.get("chat_id", "")
                 config["v0_version_id"] = result.get("version_id", "")
+                new_status = "pre_launch" if domain else "building"
                 await db.execute(
                     text(
                         "UPDATE businesses SET domain = :domain, config = :cfg, "
-                        "status = 'pre_launch', updated_at = NOW() WHERE id = :id"
+                        "status = :status, updated_at = NOW() WHERE id = :id"
                     ),
-                    {"domain": domain, "cfg": json.dumps(config), "id": business_id},
+                    {"domain": domain, "cfg": json.dumps(config), "status": new_status, "id": business_id},
                 )
                 await db.commit()
 
