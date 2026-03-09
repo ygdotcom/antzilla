@@ -29,9 +29,9 @@
   {% block body_layout %}
   <!-- Sidebar -->
   <aside class="fixed left-0 top-0 h-screen w-56 bg-zinc-950 border-r border-zinc-800 flex flex-col">
-    <div class="p-6 border-b border-zinc-800">
+    <div class="p-4 border-b border-zinc-800 flex items-center gap-3">
+      <img src="/static/logo.png" alt="Antzilla" class="w-10 h-10 rounded-lg object-cover">
       <h1 class="font-bold text-white text-lg">Antzilla</h1>
-      <p class="text-zinc-400 text-sm mt-0.5">CEO Dashboard</p>
     </div>
     <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
       <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors {% if request.url.path == '/' %}bg-zinc-800 text-white{% else %}text-zinc-400 hover:text-white hover:bg-zinc-900{% endif %}">
