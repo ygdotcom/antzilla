@@ -54,25 +54,19 @@ async def create_chat(prompt: str, project_id: str | None = None) -> dict:
     if project_id:
         payload["projectId"] = project_id
 
-    async with httpx.AsyncClient(timeout=600) as client:
+    # v0 blocks until generation completes — can take 2-5 minutes
+    async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30)) as client:
+        logger.info("v0_chat_starting", prompt_len=len(prompt))
         resp = await client.post(
             f"{BASE_URL}/v1/chats",
             headers=_headers(),
             json=payload,
         )
-        if resp.status_code == 422:
-            # Try alternative field name
-            payload2 = {"initialMessage": prompt}
-            if project_id:
-                payload2["projectId"] = project_id
-            resp = await client.post(
-                f"{BASE_URL}/v1/chats",
-                headers=_headers(),
-                json=payload2,
-            )
         resp.raise_for_status()
         data = resp.json()
-        logger.info("v0_chat_created", chat_id=data.get("id"))
+        logger.info("v0_chat_created", chat_id=data.get("id"),
+                     has_version=bool(data.get("latestVersion")),
+                     files=len(data.get("files", [])))
         return data
 
 
@@ -99,12 +93,12 @@ async def init_chat_with_files(files: list[dict], project_id: str | None = None,
 
 
 async def send_message(chat_id: str, message: str) -> dict:
-    """Send a follow-up message to iterate on the app."""
-    async with httpx.AsyncClient(timeout=600) as client:
+    """Send a follow-up message to iterate on the app. Blocks until v0 finishes."""
+    async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30)) as client:
         resp = await client.post(
             f"{BASE_URL}/v1/chats/{chat_id}/messages",
             headers=_headers(),
-            json={"content": message},
+            json={"message": message},
         )
         resp.raise_for_status()
         return resp.json()
@@ -172,7 +166,7 @@ async def build_app(prompt: str, name: str = "") -> dict:
     demo_url = ""
     files = []
 
-    for attempt in range(20):
+    for attempt in range(24):  # 24 * 15s = 6 minutes max
         await asyncio.sleep(15)
         try:
             chat_data = await get_chat(chat_id)
@@ -181,23 +175,43 @@ async def build_app(prompt: str, name: str = "") -> dict:
             demo_url = chat_data.get("demo", "")
             files = chat_data.get("files", [])
 
-            if version_id or demo_url:
+            if version_id or demo_url or files:
                 logger.info("v0_generation_complete", version_id=version_id,
                             demo_url=demo_url, files=len(files), attempts=attempt + 1)
                 break
 
-            # Check if messages have code
+            # Check assistant messages for code content
             messages = chat_data.get("messages", [])
             for msg in messages:
-                if msg.get("role") == "assistant" and msg.get("files"):
+                if msg.get("role") != "assistant":
+                    continue
+                # Check files on message
+                if msg.get("files"):
                     files = msg["files"]
                     break
+                # Check content for code parts
+                content = msg.get("content", "")
+                if isinstance(content, str) and len(content) > 3000:
+                    try:
+                        import json as _json
+                        parsed = _json.loads(content)
+                        parts = parsed.get("parts", [])
+                        has_code = any(
+                            p.get("type") in ("code", "file", "component-preview")
+                            for p in parts
+                        )
+                        if has_code:
+                            logger.info("v0_code_found_in_content", attempts=attempt + 1)
+                            break
+                    except (ValueError, TypeError):
+                        pass
 
             if files:
-                logger.info("v0_files_found_in_messages", files=len(files), attempts=attempt + 1)
                 break
 
-            logger.info("v0_polling", attempt=attempt + 1, has_version=bool(version_id))
+            logger.info("v0_polling", attempt=attempt + 1, content_len=sum(
+                len(m.get("content", "")) for m in messages if m.get("role") == "assistant"
+            ))
         except Exception as exc:
             logger.warning("v0_poll_error", attempt=attempt + 1, error=str(exc))
 
