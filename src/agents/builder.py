@@ -275,6 +275,13 @@ Use Server Actions pattern:
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+CRITICAL CODE QUALITY RULES:
+- Use semicolons at end of every statement
+- Each statement on its own line (never two on one line)
+- Proper TypeScript types on all variables
+- All imports at top of file
+- const supabase = await createClient() — MUST await
+
 Respond ONLY with valid JSON:
 {"files": [
   {"path": "src/app/[locale]/dashboard/page.tsx", "content": "..."},
@@ -738,6 +745,30 @@ class Builder(BaseAgent):
 
         return {"success": True, "files": len(tree_items), "sha": new_commit_resp.json()["sha"]}
 
+    @staticmethod
+    def _sanitize_code(content: str, path: str) -> str:
+        """Fix common Claude code gen issues before pushing."""
+        if not path.endswith((".ts", ".tsx", ".js", ".jsx")):
+            return content
+
+        import re
+        lines = content.split("\n")
+        fixed = []
+        for line in lines:
+            # Fix: two statements on one line separated by \n literal
+            if "\\n" in line and ("const " in line or "let " in line):
+                parts = line.split("\\n")
+                fixed.extend(p.strip() for p in parts if p.strip())
+                continue
+            # Fix: multiple const/let on one line (missing newline)
+            if line.count("const ") > 1 or line.count("let ") > 1:
+                parts = re.split(r'(?=\b(?:const|let)\b)', line)
+                fixed.extend(p.strip() for p in parts if p.strip())
+                continue
+            fixed.append(line)
+
+        return "\n".join(fixed)
+
     async def push_template(self, context) -> dict:
         """Step 5: Push the entire template-repo as a single commit."""
         from pathlib import Path
@@ -828,7 +859,8 @@ class Builder(BaseAgent):
         all_files = []
         for f in code_output.get("files", []):
             if f.get("path") and f.get("content") and not _is_protected(f["path"]):
-                all_files.append({"path": f["path"], "content": f["content"]})
+                sanitized = self._sanitize_code(f["content"], f["path"])
+                all_files.append({"path": f["path"], "content": sanitized})
         for mig in rls.get("fixed_migrations", []):
             if mig.get("content"):
                 fn = mig.get("filename", "002_tables.sql")
