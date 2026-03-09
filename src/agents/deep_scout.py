@@ -361,15 +361,29 @@ class DeepScout(BaseAgent):
                 if biz_row:
                     business_id = biz_row.id
                 elif go_nogo == "go":
+                    # Get name from market context, fall back to idea table
+                    biz_name = market.get("idea_name", "")
+                    biz_niche = market.get("niche", "")
+                    if not biz_name and idea_id:
+                        idea_row = (await db.execute(
+                            text("SELECT name, niche FROM ideas WHERE id = :id"),
+                            {"id": idea_id},
+                        )).fetchone()
+                        if idea_row:
+                            biz_name = idea_row.name or "Unnamed"
+                            biz_niche = biz_niche or idea_row.niche or ""
+                    import re
+                    slug = re.sub(r"[^a-z0-9]+", "-", (biz_name or "unnamed").lower()).strip("-")[:50]
                     biz_result = await db.execute(
                         text(
-                            "INSERT INTO businesses (idea_id, name, niche, status) "
-                            "VALUES (:idea_id, :name, :niche, 'setup') RETURNING id"
+                            "INSERT INTO businesses (idea_id, name, slug, niche, status) "
+                            "VALUES (:idea_id, :name, :slug, :niche, 'setup') RETURNING id"
                         ),
                         {
                             "idea_id": idea_id,
-                            "name": market.get("idea_name", "Unnamed"),
-                            "niche": market.get("niche"),
+                            "name": biz_name or "Unnamed",
+                            "slug": slug,
+                            "niche": biz_niche,
                         },
                     )
                     business_id = biz_result.fetchone().id
