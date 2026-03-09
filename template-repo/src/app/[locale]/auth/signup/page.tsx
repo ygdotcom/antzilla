@@ -55,10 +55,37 @@ export default function SignupPage() {
     }
 
     if (data.user) {
-      router.push(`/${detectedLocale}/dashboard`);
+      if (data.session) {
+        router.push(`/${detectedLocale}/dashboard`);
+      } else {
+        setSuccess(true);
+      }
     }
 
     setLoading(false);
+  }
+
+  const [success, setSuccess] = useState(false);
+
+  if (success) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+              <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Check your email</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              We sent a confirmation link to <strong>{email}</strong>. Click the link to activate your account.
+            </p>
+            <a href="/auth/login" className="mt-6 inline-block text-sm text-blue-600 hover:underline">
+              Back to login
+            </a>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
