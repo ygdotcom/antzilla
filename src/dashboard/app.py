@@ -267,6 +267,10 @@ async def run_build_pipeline(business_id: int):
                 logger.info("builder_step", step=step_name, business=biz.name)
                 result = await step_fn(build_ctx)
                 build_ctx._outputs[step_name] = result if isinstance(result, dict) else {}
+                if step_name == "generate_code":
+                    code_files = (result or {}).get("code_output", {}).get("files", [])
+                    logger.info("code_gen_result", files=len(code_files),
+                                migrations=len((result or {}).get("code_output", {}).get("migrations", [])))
 
             finalize_result = build_ctx._outputs.get("finalize", {})
             deployment_url = finalize_result.get("deployment_url", "")

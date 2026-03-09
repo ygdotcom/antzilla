@@ -46,7 +46,7 @@ async def budget_page(request: Request, user: str = Depends(verify_credentials))
 
     allocations = []
     for b in biz_alloc:
-        cfg = json.loads(b.config) if b.config else {}
+        cfg = b.config if isinstance(b.config, dict) else (json.loads(b.config) if b.config else {})
         allocations.append({"slug": b.slug, "name": b.name, "budget": cfg.get("budget_daily", 10)})
 
     return templates.TemplateResponse("budget.html", {
@@ -117,7 +117,7 @@ async def save_allocation(req: AllocationSave, user: str = Depends(verify_creden
         )).fetchone()
         if not biz:
             return HTMLResponse('<span class="text-red-400 text-sm">Business not found</span>')
-        cfg = json.loads(biz.config) if biz.config else {}
+        cfg = biz.config if isinstance(biz.config, dict) else (json.loads(biz.config) if biz.config else {})
         cfg["budget_daily"] = req.budget
         await db.execute(
             text("UPDATE businesses SET config = :cfg, updated_at = NOW() WHERE id = :id"),

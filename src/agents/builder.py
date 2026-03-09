@@ -232,6 +232,67 @@ CRITICAL RULES:
 - Respond ONLY with valid JSON. No text before or after.
 """
 
+LANDING_PAGE_PROMPT = """\
+Generate a landing page for a SaaS product. You receive the architecture and brand kit.
+
+RULES:
+- Use next-intl: const t = useTranslations(); then t('hero.title'), t('features.f1_title'), etc.
+- Import lucide-react icons for visual polish
+- Use Tailwind CSS with brand CSS variables (--color-primary, etc.)
+- DO NOT import './globals.css' or 'layout.tsx' — they exist in the template
+- The page should look like it was designed by the Stripe design team
+
+Respond ONLY with valid JSON:
+{"files": [{"path": "src/app/[locale]/page.tsx", "content": "full file content"}]}
+"""
+
+DASHBOARD_CRUD_PROMPT = """\
+Generate a functional dashboard with CRUD for a SaaS product. You receive the architecture.
+
+The Supabase client is pre-configured:
+- Server: import { createClient } from '@/lib/supabase/server'
+- Client: import { createClient } from '@/lib/supabase/client'
+- Auth is set up — use supabase.auth.getUser()
+
+REQUIREMENTS:
+1. Dashboard page (server component) that fetches real data from Supabase
+2. A Server Actions file for create/update/delete mutations
+3. A client component for the interactive parts (forms, modals)
+4. Stats cards at top showing real counts from DB
+5. Data table listing the core business entities
+6. Create form to add new items
+7. Pre-populated sample data check (the DB trigger handles this)
+
+Use these packages ONLY: next-intl, lucide-react, @/components/ui/card, @/components/ui/button, @/components/ui/input, @/components/ui/badge
+
+Use Server Actions pattern:
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+
+Respond ONLY with valid JSON:
+{"files": [
+  {"path": "src/app/[locale]/dashboard/page.tsx", "content": "..."},
+  {"path": "src/app/[locale]/dashboard/actions.ts", "content": "..."},
+  {"path": "src/components/[business-component].tsx", "content": "..."}
+]}
+"""
+
+MIGRATION_PROMPT = """\
+Generate a Supabase migration for a SaaS product. You receive the architecture with database_tables.
+
+RULES:
+- Every CREATE TABLE MUST have ALTER TABLE ... ENABLE ROW LEVEL SECURITY
+- Every table MUST have: CREATE POLICY ... USING (auth.uid() = user_id)
+- Every table MUST have: id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+- Every table MUST have: user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+- Use realistic column types (TEXT, NUMERIC, TIMESTAMPTZ, JSONB, BOOLEAN)
+- Add indexes on user_id and any frequently queried columns
+
+Respond ONLY with valid JSON:
+{"migrations": [{"filename": "002_business_tables.sql", "content": "full SQL"}]}
+"""
+
 
 def verify_rls_compliance(sql_content: str) -> dict:
     """Verify every CREATE TABLE has a matching ALTER TABLE ... ENABLE ROW LEVEL SECURITY.
@@ -374,7 +435,7 @@ class Builder(BaseAgent):
         return {"architecture": architecture, "cost_usd": cost}
 
     async def generate_code(self, context) -> dict:
-        """Step 2: Claude Sonnet generates business-specific code."""
+        """Step 2: Generate business code in 3 focused calls (not one massive one)."""
         input_data = context.workflow_input()
         business_id = input_data.get("business_id")
         brand_kit = input_data.get("brand_kit", {})
@@ -384,55 +445,79 @@ class Builder(BaseAgent):
         architecture = arch.get("architecture", {})
 
         model_tier = await self.check_budget()
-
-        # Include the translation keys so Claude uses them in components
         available_keys = list(self._flatten_keys(messages_fr)) if messages_fr else []
+        total_cost = 0.0
+        all_files = []
+        all_migrations = []
 
-        user_payload = json.dumps({
+        base_context = json.dumps({
             "architecture": architecture,
             "brand_kit": brand_kit,
             "niche": niche,
-            "translation_keys_available": available_keys[:200],
-        }, default=str)[:30_000]
+            "translation_keys": available_keys[:100],
+        }, default=str)[:15_000]
 
-        response, cost = await call_claude(
-            model_tier=model_tier,
-            system=CODE_GEN_PROMPT,
-            user=user_payload,
-            max_tokens=32768,
-            temperature=0.2,
-        )
-
-        code_output = _parse_json_response(response)
-        if not code_output or not code_output.get("files"):
-            # Claude sometimes returns code blocks instead of pure JSON.
-            # Try extracting individual file blocks as a fallback.
-            logger.warning("code_gen_json_parse_failed", response_len=len(response))
-            files = []
-            # Look for ```filename patterns
-            import re
-            file_blocks = re.findall(
-                r'(?:^|\n)(?:###?\s*)?`?([^\n`]+\.[a-z]{1,4})`?\s*\n```[a-z]*\n(.*?)```',
-                response, re.DOTALL,
+        # --- Call 1: Landing page ---
+        try:
+            resp1, cost1 = await call_claude(
+                model_tier=model_tier,
+                system=LANDING_PAGE_PROMPT,
+                user=base_context,
+                max_tokens=8192,
+                temperature=0.2,
             )
-            for path, content in file_blocks:
-                path = path.strip().strip("`").strip()
-                if path and content.strip():
-                    files.append({"path": path, "content": content.strip(), "action": "replace"})
-            if files:
-                code_output = {"files": files, "migrations": [], "recovered": True}
-                logger.info("code_gen_recovered", files=len(files))
-            else:
-                code_output = {"files": [], "migrations": [], "error": "parse failed", "raw_preview": response[:500]}
+            total_cost += cost1
+            parsed = _parse_json_response(resp1)
+            if parsed and parsed.get("files"):
+                all_files.extend(parsed["files"])
+                logger.info("code_gen_landing", files=len(parsed["files"]))
+        except Exception as exc:
+            logger.warning("code_gen_landing_failed", error=str(exc))
+
+        # --- Call 2: Dashboard + CRUD ---
+        try:
+            resp2, cost2 = await call_claude(
+                model_tier=model_tier,
+                system=DASHBOARD_CRUD_PROMPT,
+                user=base_context,
+                max_tokens=8192,
+                temperature=0.2,
+            )
+            total_cost += cost2
+            parsed = _parse_json_response(resp2)
+            if parsed and parsed.get("files"):
+                all_files.extend(parsed["files"])
+                logger.info("code_gen_dashboard", files=len(parsed["files"]))
+        except Exception as exc:
+            logger.warning("code_gen_dashboard_failed", error=str(exc))
+
+        # --- Call 3: Migration ---
+        try:
+            resp3, cost3 = await call_claude(
+                model_tier=model_tier,
+                system=MIGRATION_PROMPT,
+                user=base_context,
+                max_tokens=4096,
+                temperature=0.1,
+            )
+            total_cost += cost3
+            parsed = _parse_json_response(resp3)
+            if parsed and parsed.get("migrations"):
+                all_migrations.extend(parsed["migrations"])
+                logger.info("code_gen_migration", count=len(parsed["migrations"]))
+        except Exception as exc:
+            logger.warning("code_gen_migration_failed", error=str(exc))
+
+        code_output = {"files": all_files, "migrations": all_migrations}
 
         await self.log_execution(
             action="generate_code",
-            result={"files": len(code_output.get("files", [])), "migrations": len(code_output.get("migrations", []))},
-            cost_usd=cost,
+            result={"files": len(all_files), "migrations": len(all_migrations)},
+            cost_usd=total_cost,
             business_id=business_id,
         )
 
-        return {"code_output": code_output, "cost_usd": cost}
+        return {"code_output": code_output, "cost_usd": total_cost}
 
     async def verify_rls(self, context) -> dict:
         """Step 3: NON-NEGOTIABLE — verify every migration has RLS enabled.

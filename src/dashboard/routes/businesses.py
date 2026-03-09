@@ -14,6 +14,18 @@ from src.db import SessionLocal
 router = APIRouter(prefix="/business")
 
 
+def _parse_config(val) -> dict:
+    """Safely parse config — handles both JSONB (dict) and TEXT (str)."""
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except (json.JSONDecodeError, ValueError):
+            return {}
+    return {}
+
+
 async def _get_business_data(slug: str) -> dict | None:
     async with SessionLocal() as db:
         biz = (await db.execute(text(
@@ -58,7 +70,7 @@ async def _get_business_data(slug: str) -> dict | None:
             "ORDER BY score DESC LIMIT 20"
         ), {"biz": biz.id})).fetchall()
 
-    config = json.loads(biz.config) if biz.config else {}
+    config = _parse_config(biz.config)
     return {
         "business": {
             "id": biz.id, "name": biz.name, "slug": biz.slug,
@@ -121,7 +133,7 @@ async def update_controls(
         if not biz:
             return HTMLResponse("Not found", status_code=404)
 
-        config = json.loads(biz.config) if biz.config else {}
+        config = _parse_config(biz.config)
         config["budget_daily"] = budget_daily
         config["email_volume"] = email_volume
         config["voice_volume"] = voice_volume
@@ -171,10 +183,56 @@ async def double_down(request: Request, slug: str, user: str = Depends(verify_cr
     async with SessionLocal() as db:
         biz = (await db.execute(text("SELECT id, config FROM businesses WHERE slug = :slug"), {"slug": slug})).fetchone()
         if biz:
-            config = json.loads(biz.config) if biz.config else {}
+            config = _parse_config(biz.config)
             config["budget_daily"] = config.get("budget_daily", 10) * 2
             await db.execute(text(
                 "UPDATE businesses SET config = :config, updated_at = NOW() WHERE id = :id"
             ), {"config": json.dumps(config), "id": biz.id})
             await db.commit()
     return RedirectResponse(f"/business/{slug}", status_code=303)
+
+
+@router.post("/{slug}/rebuild", response_class=HTMLResponse)
+async def rebuild_business(request: Request, slug: str, user: str = Depends(verify_credentials)):
+    """Reset business and re-trigger the build pipeline."""
+    async with SessionLocal() as db:
+        biz = (await db.execute(text(
+            "SELECT id, idea_id FROM businesses WHERE slug = :slug"
+        ), {"slug": slug})).fetchone()
+        if not biz:
+            return HTMLResponse("Not found", status_code=404)
+
+        # Clean up old GitHub repo and Vercel project
+        try:
+            from src.config import settings
+            import httpx as _httpx
+            gh = settings.get("GITHUB_TOKEN")
+            vc = settings.get("VERCEL_TOKEN")
+            old_repo = (await db.execute(text("SELECT github_repo FROM businesses WHERE id = :id"), {"id": biz.id})).fetchone()
+            async with _httpx.AsyncClient(timeout=10) as c:
+                if old_repo and old_repo.github_repo:
+                    await c.delete(f"https://api.github.com/repos/{old_repo.github_repo}",
+                                   headers={"Authorization": f"Bearer {gh}", "Accept": "application/vnd.github+json"})
+                await c.delete(f"https://api.vercel.com/v9/projects/{slug}",
+                               headers={"Authorization": f"Bearer {vc}"})
+        except Exception:
+            pass
+
+        await db.execute(text(
+            "UPDATE businesses SET status = 'setup', github_repo = NULL, domain = NULL, "
+            "vercel_project_id = NULL, supabase_url = NULL, supabase_anon_key = NULL, "
+            "updated_at = NOW() WHERE id = :id"
+        ), {"id": biz.id})
+        await db.execute(text(
+            "INSERT INTO agent_logs (agent_name, action, result, status, business_id) "
+            "VALUES ('ceo_dashboard', 'rebuild_triggered', :result, 'success', :biz_id)"
+        ), {"result": json.dumps({"slug": slug}), "biz_id": biz.id})
+        await db.commit()
+
+        # Trigger the build pipeline
+        from src.dashboard.app import run_build_pipeline
+        await run_build_pipeline(biz.id)
+
+    return HTMLResponse(
+        '<span class="text-brand animate-pulse">Rebuilding... check Console</span>'
+    )

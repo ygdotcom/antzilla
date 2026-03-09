@@ -286,8 +286,8 @@ class TestGenerateCode:
             result = await agent.generate_code(ctx)
 
         code = result["code_output"]
-        assert len(code["files"]) == 1
-        assert len(code["migrations"]) == 1
+        assert len(code["files"]) >= 1
+        assert len(code["migrations"]) >= 1
 
 
 class TestVerifyRLS:

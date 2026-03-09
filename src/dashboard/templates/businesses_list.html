@@ -17,6 +17,7 @@
             <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">MRR</th>
             <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Customers</th>
             <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3">Kill Score</th>
+            <th class="text-left text-zinc-400 text-sm font-medium px-4 py-3"></th>
           </tr>
         </thead>
         <tbody>
@@ -50,6 +51,19 @@
                 {% endif %}
               {% else %}
               <span class="text-zinc-500">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if b.status in ['setup', 'building'] %}
+              <span id="rebuild-{{ b.slug }}">
+                <button
+                  hx-post="/business/{{ b.slug }}/rebuild"
+                  hx-confirm="Rebuild {{ b.name }} from scratch?"
+                  hx-target="#rebuild-{{ b.slug }}"
+                  hx-swap="innerHTML"
+                  class="text-xs text-brand hover:underline"
+                >Rebuild</button>
+              </span>
               {% endif %}
             </td>
           </tr>
